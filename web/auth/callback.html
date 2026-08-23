@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>로그인 처리 중 · 붙박스</title>
+    <link rel="icon" href="../../icons/icon-32.png" />
+    <link rel="stylesheet" href="../styles.css" />
+  </head>
+  <body>
+    <div class="app">
+      <section class="view view--center" data-view="progress">
+        <div class="spinner"></div>
+        <p class="muted" id="callback-status">로그인 처리 중…</p>
+      </section>
+
+      <section class="view view--center" data-view="failed" hidden>
+        <h1 class="view__title">로그인하지 못했습니다</h1>
+        <p class="view__desc" id="callback-error"></p>
+        <a class="btn btn--primary" href="../index.html">붙박스 홈으로 돌아가기</a>
+      </section>
+    </div>
+
+    <script type="module" src="../src/callback.js"></script>
+  </body>
+</html>

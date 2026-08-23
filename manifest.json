@@ -1,0 +1,42 @@
+{
+  "manifest_version": 3,
+  "name": "붙박스",
+  "short_name": "붙박스",
+  "description": "자주 쓰는 문구를 이름표 붙은 고정 박스에 넣어 팀과 나눠 씁니다.",
+  "version": "1.0.0",
+  "minimum_chrome_version": "116",
+  "permissions": [
+    "sidePanel",
+    "storage",
+    "identity",
+    "clipboardWrite"
+  ],
+  "host_permissions": [
+    "https://*.supabase.co/*"
+  ],
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "action": {
+    "default_title": "붙박스 열기",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' https://*.supabase.co wss://*.supabase.co"
+  }
+}

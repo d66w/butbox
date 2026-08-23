@@ -1,0 +1,164 @@
+import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { join, extname, dirname, posix } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const root = fileURLToPath(new URL("..", import.meta.url));
+const problems = [];
+
+function fail(message) {
+  problems.push(message);
+}
+
+function read(path) {
+  return readFileSync(join(root, path), "utf8");
+}
+
+function walk(dir, out = []) {
+  for (const entry of readdirSync(join(root, dir))) {
+    if (entry === "node_modules" || entry.startsWith(".")) {
+      continue;
+    }
+    const rel = join(dir, entry);
+    if (statSync(join(root, rel)).isDirectory()) {
+      walk(rel, out);
+    } else {
+      out.push(rel.split("\\").join("/"));
+    }
+  }
+  return out;
+}
+
+const allFiles = walk(".");
+const htmlFiles = allFiles.filter((path) => path.endsWith(".html"));
+const jsFiles = allFiles.filter((path) => path.endsWith(".js"));
+
+const manifest = JSON.parse(read("manifest.json"));
+
+if (manifest.manifest_version !== 3) {
+  fail("manifest_version이 3이 아닙니다.");
+}
+
+const referenced = [
+  manifest.background?.service_worker,
+  manifest.side_panel?.default_path,
+  ...Object.values(manifest.icons ?? {}),
+  ...Object.values(manifest.action?.default_icon ?? {})
+].filter(Boolean);
+
+for (const path of referenced) {
+  if (!existsSync(join(root, path))) {
+    fail(`manifest이 가리키는 파일이 없습니다: ${path}`);
+  }
+}
+
+for (const permission of ["sidePanel", "storage", "identity", "clipboardWrite"]) {
+  if (!manifest.permissions?.includes(permission)) {
+    fail(`권한이 빠졌습니다: ${permission}`);
+  }
+}
+
+const csp = manifest.content_security_policy?.extension_pages ?? "";
+if (!csp.includes("wss://*.supabase.co")) {
+  fail("CSP의 connect-src에 wss://*.supabase.co가 없습니다. 실시간 연결이 막힙니다.");
+}
+
+for (const htmlPath of htmlFiles) {
+  const html = read(htmlPath);
+  if (/<script(?![^>]*\ssrc=)/i.test(html)) {
+    fail(`인라인 스크립트가 있습니다: ${htmlPath}`);
+  }
+  for (const match of html.matchAll(/(?:src|href)="([^"]+)"/g)) {
+    const target = match[1];
+    if (target.startsWith("#") || target.startsWith("mailto:") || target.startsWith("tel:")) {
+      continue;
+    }
+    if (target.startsWith("http") || target.startsWith("data:")) {
+      fail(`외부 리소스를 참조합니다: ${htmlPath} -> ${target}`);
+      continue;
+    }
+    const resolved = posix.normalize(posix.join(posix.dirname(htmlPath), target));
+    if (!existsSync(join(root, resolved))) {
+      fail(`없는 파일을 참조합니다: ${htmlPath} -> ${target}`);
+    }
+  }
+}
+
+const config = read("config.js");
+if (!config.includes("export const CONFIG")) {
+  fail("config.js가 CONFIG를 export하지 않습니다.");
+}
+if (/service_role|SUPABASE_SERVICE|R2_SECRET|secret_key/i.test(config)) {
+  fail("config.js에 비밀 키로 보이는 값이 있습니다. anon key만 넣으세요.");
+}
+
+const schema = read("supabase/schema.sql");
+for (const needle of [
+  "create trigger boxes_sync_usage after insert or update or delete",
+  "on_auth_user_created",
+  "replica identity full",
+  "enable row level security"
+]) {
+  if (!schema.includes(needle)) {
+    fail(`schema.sql에서 확인하지 못했습니다: ${needle}`);
+  }
+}
+
+for (const path of jsFiles) {
+  try {
+    execFileSync(process.execPath, ["--check", join(root, path)], { stdio: "pipe" });
+  } catch (error) {
+    fail(`문법 오류: ${path}\n${String(error.stderr ?? error.message).trim()}`);
+  }
+}
+
+for (const path of jsFiles) {
+  const source = read(path);
+  const pattern = /\bfrom\s+["']([^"']+)["']/g;
+  for (const match of source.matchAll(pattern)) {
+    const specifier = match[1];
+    if (!specifier.startsWith(".")) {
+      continue;
+    }
+    const resolved = posix.normalize(posix.join(posix.dirname(path), specifier));
+    if (!existsSync(join(root, resolved))) {
+      fail(`없는 모듈을 import합니다: ${path} -> ${specifier}`);
+    }
+  }
+}
+
+const commentRules = [
+  { test: (path) => /\.(js|mjs)$/.test(path), pattern: /^\s*(\/\/|\/\*|\*\s|\*\/)/ },
+  { test: (path) => path.endsWith(".css"), pattern: /^\s*(\/\*|\*\/)/ },
+  { test: (path) => path.endsWith(".sql"), pattern: /^\s*--/ },
+  { test: (path) => path.endsWith(".html"), pattern: /^\s*<!--/ }
+];
+
+for (const path of allFiles) {
+  if (path.startsWith("icons/") || path.endsWith(".md") || path.endsWith(".json")) {
+    continue;
+  }
+  const rule = commentRules.find((item) => item.test(path));
+  if (!rule) {
+    continue;
+  }
+  const lines = read(path).split(/\r?\n/);
+  lines.forEach((line, index) => {
+    if (rule.pattern.test(line)) {
+      fail(`주석이 남아 있습니다: ${path}:${index + 1}`);
+    }
+  });
+}
+
+if (problems.length > 0) {
+  console.error(`검사 실패 ${problems.length}건`);
+  for (const problem of problems) {
+    console.error(` - ${problem}`);
+  }
+  process.exit(1);
+}
+
+console.log(`검사 통과 · 파일 ${allFiles.length}개`);
+console.log(`확장 이름 ${manifest.name} · 버전 ${manifest.version}`);
+console.log("확장 리디렉션 주소: chrome://extensions에서 확장 ID 확인 후 https://<ID>.chromiumapp.org/supabase-auth 로 등록");
+console.log("웹 리디렉션 주소: https://<도메인>/web/auth/callback.html 로 등록");
