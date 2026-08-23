@@ -1,6 +1,6 @@
-import { loadSession, signIn } from "../../src/auth.js";
-import { errorMessage } from "../../src/errors.js";
-import { showToast } from "../../src/ui.js";
+import { loadSession, signIn } from "../src/auth.js";
+import { errorMessage } from "../src/errors.js";
+import { showToast } from "../src/ui.js";
 
 async function wireCtaButtons() {
   const session = await loadSession();

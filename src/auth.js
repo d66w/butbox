@@ -26,7 +26,7 @@ export function redirectUrl() {
   if (isExtensionContext()) {
     return chrome.identity.getRedirectURL("supabase-auth");
   }
-  return `${window.location.origin}/web/auth/callback.html`;
+  return `${window.location.origin}/auth/callback.html`;
 }
 
 export function onSessionChange(listener) {

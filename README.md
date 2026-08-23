@@ -4,26 +4,43 @@
 
 브리핑 §9의 검증 게이트를 지켜 **v1은 텍스트 기능만** 구현했습니다. 파일·이미지 업로드(R2)와 결제는 들어 있지 않습니다. 이 게이트는 확장과 웹 모두에 동일하게 적용됩니다.
 
+다음에 할 일은 [ROADMAP.md](ROADMAP.md)에 있습니다.
+
 ---
 
 ## 0. 두 클라이언트, 하나의 코드
 
 `src/` 아래 모든 로직(인증, API, 실시간, 화면 컨트롤러, 검증)은 확장과 웹이 **완전히 같은 파일**을 씁니다. 플랫폼이 갈리는 지점은 `src/auth.js`와 `src/store.js` 단 두 곳뿐이고, 둘 다 `chrome.identity`/`chrome.storage` 존재 여부로 자동 분기합니다.
 
-- **확장**: `sidepanel.html` → `src/app.js`, 로그인은 `chrome.identity.launchWebAuthFlow` 팝업.
-- **웹**: `web/` 폴더 → `web/app.html`이 `../src/app.js`를 그대로 불러다 씁니다. 로그인은 전체 페이지 리디렉션 후 `web/auth/callback.html`에서 코드 교환.
-
-`web/index.html`(소개 페이지), `web/app.html`(로그인 후 앱 화면), `web/auth/callback.html`(OAuth 콜백), `web/privacy.html`(공개 개인정보처리방침)로 구성됩니다.
-
-**배포 전제**: 저장소 전체를 정적 호스트의 루트로 배포하고 `web/index.html`을 홈으로 지정하세요. `web/app.html`이 상대 경로로 저장소 루트의 `src/`, `config.js`를 그대로 불러오기 때문에, `web/` 폴더만 따로 떼어 배포하면 깨집니다. Vercel/Netlify/Cloudflare Pages 모두 "루트 디렉터리 지정 없이 전체 배포 + 라우팅만 `web/index.html`로" 방식이면 빌드 단계 없이 됩니다.
-
-Supabase Authentication → URL Configuration → Redirect URLs에 웹 콜백 주소도 추가하세요.
+- **확장**: `sidepanel.html` → `src/app.js`, 로그인은 `chrome.identity.launchWebAuthFlow` 팝업, 저장은 `chrome.storage.local`.
+- **웹**: `app.html` → 같은 `src/app.js`, 로그인은 전체 페이지 리디렉션 후 `auth/callback.html`에서 코드 교환, 저장은 `localStorage`.
 
 ```text
-https://<도메인>/web/auth/callback.html
+index.html            소개 페이지 (사이트 홈)
+app.html              로그인 후 앱 화면
+privacy.html          공개 개인정보처리방침
+auth/callback.html    OAuth 콜백
+web/site.css          웹 전용 스타일
+web/landing.js        웹 전용 스크립트
+web/callback.js
+src/                  확장·웹 공용 로직
+sidepanel.html        확장 진입점
+styles.css            확장 전용 스타일
+manifest.json
+supabase/schema.sql
 ```
 
-이미 확장을 설정했다면 같은 Supabase 프로젝트의 `config.js`를 웹에도 그대로 씁니다 — Redirect URL만 추가하면 됩니다.
+**배포**: 빌드 단계가 없습니다. **저장소 루트를 그대로 정적 호스트에 올리면** `https://<도메인>/`이 소개 페이지가 됩니다. 빌드 명령 없음, 출력 디렉터리는 루트(`.`).
+
+Supabase Authentication → URL Configuration → Redirect URLs에 웹 콜백 주소를 추가하세요.
+
+```text
+https://<도메인>/auth/callback.html
+```
+
+확장과 웹은 같은 Supabase 프로젝트·같은 `config.js`를 씁니다 — Redirect URL만 각각 등록하면 됩니다.
+
+호스팅 선택지와 트레이드오프는 [ROADMAP.md](ROADMAP.md)의 "호스팅" 절에 정리했습니다. 저장소가 Private이라 GitHub Pages는 유료 플랜이 필요합니다.
 
 ---
 
@@ -113,7 +130,7 @@ npm run check
 npm test
 ```
 
-`npm run check`는 manifest 참조 파일, CSP의 `wss://`, 인라인 스크립트, config.js의 비밀 키, schema.sql의 필수 구문(용량 트리거 3종·auth 트리거·replica identity·RLS), 전체 JS 문법, 그리고 **모든 코드 파일에 주석이 없는지**를 검사합니다.
+`npm run check`는 manifest 참조 파일, CSP의 `wss://`, 모든 HTML의 인라인 스크립트와 깨진 링크, JS의 깨진 import 경로, config.js의 비밀 키, schema.sql의 필수 구문(용량 트리거 3종·auth 트리거·replica identity·RLS), 전체 JS 문법, 그리고 **모든 코드 파일에 주석이 없는지**를 검사합니다.
 
 ---
 
@@ -153,29 +170,13 @@ npm test
 
 ---
 
-## 9. 다음 단계 — 먼저 §9 게이트
+## 9. 다음에 할 일
 
-브리핑 §9는 순서를 못박고 있습니다.
+전부 [ROADMAP.md](ROADMAP.md)에 있습니다. 요약하면:
 
-> 텍스트 기능만 완성되면 거기서 멈추고 실제 팀에서 2주간 사용해본다.
-> 아무도 시키지 않았는데 3일 이상 계속 쓰는 사람이 있는가?
+1. **0단계 — 출시 준비**: Supabase 프로젝트, Google OAuth, `config.js`, 호스팅, 개인정보처리방침 실명 채우기. 코드 작업은 없고 전부 계정·설정 작업입니다.
+2. **1단계 — 검증 게이트(브리핑 §9, 건너뛰기 금지)**: 실제 팀에서 2주간 써보고 "아무도 시키지 않았는데 3일 이상 계속 쓰는 사람이 있는가"를 봅니다. 없으면 여기서 멈춥니다.
+3. **2단계 — 파일·이미지**: 게이트를 통과한 뒤에만. R2 + Edge Function.
+4. **3단계 — 결제**: v2. 지금은 `upgrade_intents` 클릭 로그만 쌓습니다.
 
-**있으면** 파일 업로드(R2 연동)로 넘어가고, **없으면** 거기서 멈춥니다. 이 게이트를 건너뛰고 파일이나 결제부터 만들지 마세요.
-
-파일 단계에 들어갈 때 이미 준비된 자리:
-
-- `boxes.kind`가 `image`/`file`을 받고, `r2_key`·`byte_size`·`expires_at` 컬럼이 이미 있습니다
-- `boxes_kind_shape` 제약이 텍스트/파일 모양을 갈라 둡니다
-- `spaces.quota_bytes`(50MB)와 용량 초과 검사(`SPACE_QUOTA_EXCEEDED`)가 이미 동작합니다
-- `plans.file_max_bytes`(Free 15MB)가 들어 있습니다
-
-그때 새로 만들어야 할 것: R2 버킷, 서명 URL 발급 Edge Function, 7일 만료 정리 작업, 클라이언트 이미지 리사이즈(장변 1600px)+WebP 변환(§7).
-
----
-
-## 10. 공개 전 남은 운영 작업
-
-- 웹스토어 draft 생성 → 확정된 확장 ID로 OAuth 최종 확인
-- [`PRIVACY.md`](PRIVACY.md)의 `[운영자]` 자리를 실제 정보로 채우고 공개 URL에 게시
-- 서로 다른 Google 계정 2개로 참여·실시간·RLS 차단 통합 테스트
-- 스페이스 참여 시도의 비밀번호 무차별 대입 제한 (지금은 없습니다)
+브리핑 §12의 미결정 사항과 알려진 리스크도 ROADMAP에 정리돼 있습니다.

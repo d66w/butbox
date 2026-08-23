@@ -161,4 +161,4 @@ if (problems.length > 0) {
 console.log(`검사 통과 · 파일 ${allFiles.length}개`);
 console.log(`확장 이름 ${manifest.name} · 버전 ${manifest.version}`);
 console.log("확장 리디렉션 주소: chrome://extensions에서 확장 ID 확인 후 https://<ID>.chromiumapp.org/supabase-auth 로 등록");
-console.log("웹 리디렉션 주소: https://<도메인>/web/auth/callback.html 로 등록");
+console.log("웹 리디렉션 주소: https://<도메인>/auth/callback.html 로 등록");

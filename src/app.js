@@ -41,6 +41,7 @@ const state = {
 };
 
 const boxViews = new Map();
+const inFlightSaves = new Set();
 
 const realtime = new BoxRealtime({
   onChange: handleRealtimeChange,
@@ -420,6 +421,7 @@ function createBoxView(box) {
     timer: null,
     dirty: false,
     saving: false,
+    resaveRequested: false,
     savedValue: box.text_content ?? "",
     remote: null,
     box
@@ -540,14 +542,26 @@ function flushAllPending() {
       pending.push(saving);
     }
   }
-  return Promise.all(pending);
+  return Promise.all([...pending, ...inFlightSaves]);
 }
 
-async function saveBox(boxId) {
+function saveBox(boxId) {
+  const promise = runSave(boxId);
+  inFlightSaves.add(promise);
+  promise.catch(() => {}).then(() => inFlightSaves.delete(promise));
+  return promise;
+}
+
+async function runSave(boxId) {
   const view = boxViews.get(boxId);
-  if (!view || view.saving) {
+  if (!view) {
     return;
   }
+  if (view.saving) {
+    view.resaveRequested = true;
+    return;
+  }
+
   const value = view.textarea.value;
   if (value === view.savedValue) {
     view.dirty = false;
@@ -563,12 +577,14 @@ async function saveBox(boxId) {
   }
 
   view.saving = true;
+  view.resaveRequested = false;
+  let succeeded = false;
   setStatus(view, "저장 중…");
   try {
     const rows = await api.saveBoxText(boxId, value);
     const saved = Array.isArray(rows) ? rows[0] : null;
     view.savedValue = value;
-    view.dirty = false;
+    view.dirty = view.textarea.value !== value;
     view.remote = null;
     view.badge.hidden = true;
     if (saved) {
@@ -580,11 +596,18 @@ async function saveBox(boxId) {
     }
     setStatus(view, "저장됨");
     bumpSpaceCounts();
+    succeeded = true;
   } catch (error) {
     setStatus(view, "저장 실패");
     reportError(error);
   } finally {
     view.saving = false;
+  }
+
+  const wantsResave = view.resaveRequested || view.textarea.value !== view.savedValue;
+  view.resaveRequested = false;
+  if (succeeded && wantsResave && boxViews.has(boxId)) {
+    await runSave(boxId);
   }
 }
 
@@ -615,7 +638,8 @@ function copyBox(boxId) {
         showToast("이 박스는 비어 있습니다.", "info");
         return;
       }
-      if (!view.dirty && text !== view.textarea.value) {
+      const busy = view.dirty || view.saving || document.activeElement === view.textarea;
+      if (!busy && text !== view.textarea.value) {
         view.textarea.value = text;
         view.savedValue = text;
         updateSizeLabel(view);

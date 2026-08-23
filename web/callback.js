@@ -1,5 +1,5 @@
-import { completeWebSignIn } from "../../src/auth.js";
-import { errorMessage } from "../../src/errors.js";
+import { completeWebSignIn } from "../src/auth.js";
+import { errorMessage } from "../src/errors.js";
 
 completeWebSignIn()
   .then(() => {
