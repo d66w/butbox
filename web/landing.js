@@ -1,10 +1,20 @@
-import { loadSession, signIn } from "../src/auth.js";
+import { isConfigured, loadSession, signIn } from "../src/auth.js";
 import { errorMessage } from "../src/errors.js";
 import { showToast } from "../src/ui.js";
 
 async function wireCtaButtons() {
-  const session = await loadSession();
   const buttons = document.querySelectorAll("[data-cta='signin']");
+
+  if (!isConfigured()) {
+    for (const button of buttons) {
+      button.addEventListener("click", () => {
+        window.location.href = "app.html";
+      });
+    }
+    return;
+  }
+
+  const session = await loadSession();
 
   if (session) {
     for (const button of buttons) {
