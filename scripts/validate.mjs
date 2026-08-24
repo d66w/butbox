@@ -97,11 +97,35 @@ for (const needle of [
   "create trigger boxes_sync_usage after insert or update or delete",
   "on_auth_user_created",
   "replica identity full",
-  "enable row level security"
+  "enable row level security",
+  "alter table public.box_user_state enable row level security",
+  "alter table public.analytics_events enable row level security",
+  "alter table public.subscriptions enable row level security",
+  "alter table public.invitations enable row level security"
 ]) {
   if (!schema.includes(needle)) {
     fail(`schema.sql에서 확인하지 못했습니다: ${needle}`);
   }
+}
+
+for (const table of ["box_user_state", "analytics_events", "subscriptions", "invitations", "box_list"]) {
+  if (!schema.includes(`revoke all on public.${table} from anon, authenticated;`)) {
+    fail(`schema.sql에서 ${table}의 anon 권한 회수를 확인하지 못했습니다.`);
+  }
+}
+
+if (/service_role|SUPABASE_SERVICE_ROLE/.test(schema)) {
+  fail("schema.sql에 service_role 참조가 있습니다.");
+}
+
+const manifestPermissions = manifest.permissions ?? [];
+for (const risky of ["tabs", "history", "cookies", "webNavigation", "<all_urls>"]) {
+  if (manifestPermissions.includes(risky)) {
+    fail(`권한이 과합니다: ${risky}. 최소 권한을 유지하세요.`);
+  }
+}
+if ((manifest.host_permissions ?? []).some((entry) => entry.includes("*://*/*") || entry === "<all_urls>")) {
+  fail("host_permissions가 모든 사이트를 요구합니다. optional_host_permissions를 쓰세요.");
 }
 
 for (const path of jsFiles) {

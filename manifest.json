@@ -2,14 +2,21 @@
   "manifest_version": 3,
   "name": "붙박스",
   "short_name": "붙박스",
-  "description": "자주 쓰는 문구를 이름표 붙은 고정 박스에 넣어 팀과 나눠 씁니다.",
-  "version": "1.0.0",
+  "description": "매일 반복해서 입력하는 문구를 저장하고, 검색해서 바로 복사하거나 입력창에 넣습니다.",
+  "version": "2.0.0",
   "minimum_chrome_version": "116",
   "permissions": [
     "sidePanel",
     "storage",
     "identity",
-    "clipboardWrite"
+    "clipboardWrite",
+    "contextMenus",
+    "scripting",
+    "activeTab"
+  ],
+  "optional_host_permissions": [
+    "http://*/*",
+    "https://*/*"
   ],
   "host_permissions": [
     "https://*.supabase.co/*"
@@ -27,6 +34,15 @@
       "32": "icons/icon-32.png",
       "48": "icons/icon-48.png",
       "128": "icons/icon-128.png"
+    }
+  },
+  "commands": {
+    "quick-search": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+K",
+        "mac": "Command+Shift+K"
+      },
+      "description": "붙박스 검색 열기"
     }
   },
   "background": {

@@ -2,6 +2,16 @@ import { isConfigured, loadSession, signIn } from "../src/auth.js";
 import { errorMessage } from "../src/errors.js";
 import { showToast } from "../src/ui.js";
 
+function wireWaitlist() {
+  for (const button of document.querySelectorAll("[data-waitlist]")) {
+    button.addEventListener("click", () => {
+      const plan = button.dataset.waitlist;
+      window.sessionStorage.setItem("butbox.waitlist", plan);
+      window.location.href = "app.html";
+    });
+  }
+}
+
 async function wireCtaButtons() {
   const buttons = document.querySelectorAll("[data-cta='signin']");
 
@@ -42,4 +52,5 @@ async function wireCtaButtons() {
   }
 }
 
+wireWaitlist();
 wireCtaButtons().catch((error) => console.error("초기화 실패", error));

@@ -1,10 +1,32 @@
 # 붙박스
 
-자주 쓰는 문구를 이름표 붙은 "박스"에 넣어두고, 같은 스페이스에 속한 팀원이 다른 기기에서 꺼내 씁니다. Chrome MV3 사이드 패널 확장 프로그램과 웹사이트, 두 클라이언트가 같은 Supabase 백엔드를 공유합니다.
+**매일 반복해서 입력하는 문구를, 한 번 저장하고 어디서든 즉시 꺼내는 도구.**
 
-브리핑 §9의 검증 게이트를 지켜 **v1은 텍스트 기능만** 구현했습니다. 파일·이미지 업로드(R2)와 결제는 들어 있지 않습니다. 이 게이트는 확장과 웹 모두에 동일하게 적용됩니다.
+찾고 → 클릭하고 → 끝. 크롬 사이드 패널과 웹 앱, 두 클라이언트가 같은 Supabase 백엔드를 공유합니다.
+
+주 타깃은 고객센터·CS팀처럼 같은 안내 문구를 하루에 수십 번 다시 치는 사람들입니다.
 
 다음에 할 일은 [ROADMAP.md](ROADMAP.md)에 있습니다.
+
+---
+
+## 핵심 기능
+
+| 기능 | 설명 |
+| --- | --- |
+| 검색 | 이름·내용·태그를 한 번에. 띄어쓰기 무시, **한국어 초성 검색**(`ㅎㅂ` → 환불 안내), `#태그` 필터 |
+| 키보드 | 검색창에서 `↑`/`↓` 이동, `Enter` 복사, `Shift+Enter` 삽입, `Esc` 초기화 |
+| 복사 | 카드의 복사 버튼 한 번이면 클립보드에 |
+| **삽입** | 현재 페이지 입력창에 바로 넣기. 안 되는 곳에서는 자동으로 복사로 대체 |
+| **템플릿 변수** | `{{고객명}}` 처럼 적으면 복사·삽입할 때 값을 물어봄. `{{오늘}}`·`{{지금}}`은 자동 |
+| 태그 · 즐겨찾기 | 박스당 태그, 개인별 즐겨찾기(팀원끼리 독립) |
+| 정렬 | 내 순서 / 최근 사용 / 이름. 즐겨찾기는 항상 위 |
+| 우클릭 저장 | 웹페이지에서 텍스트 선택 → 우클릭 → 붙박스에 저장 (출처 포함 선택 가능) |
+| 단축키 | `Ctrl+Shift+K`로 사이드 패널 열고 검색창 포커스 |
+| 팀 | 스페이스, 초대 링크, 역할(owner/admin/member), 실시간 동기화 |
+| 요금제 | Free / Pro / Team 한도가 DB에 정의됨. 결제는 미구현(대기 명단만) |
+
+파일·이미지 업로드는 **의도적으로 제외**했습니다. 브리핑 §9의 검증 게이트를 지킵니다.
 
 ---
 
@@ -17,6 +39,7 @@
 
 ```text
 index.html            소개 페이지 (사이트 홈)
+join.html             초대 링크 수신
 app.html              로그인 후 앱 화면
 privacy.html          공개 개인정보처리방침
 auth/callback.html    OAuth 콜백
@@ -24,6 +47,7 @@ web/site.css          웹 전용 스타일
 web/landing.js        웹 전용 스크립트
 web/callback.js
 src/                  확장·웹 공용 로직
+src/features/         검색·템플릿·정렬·통계·삽입
 sidepanel.html        확장 진입점
 styles.css            확장 전용 스타일
 manifest.json
@@ -44,31 +68,15 @@ https://<도메인>/auth/callback.html
 
 ---
 
-## 1. 지금 되는 것
-
-| 기능 | 상태 |
-| --- | --- |
-| Google OAuth 로그인 (PKCE) | 구현 |
-| 첫 로그인 시 `내 공간` 자동 생성 | 구현 |
-| 텍스트 박스 붙여넣기 · 덮어쓰기 · 복사 | 구현 |
-| Supabase Realtime로 팀원 화면 실시간 반영 | 구현 |
-| 스페이스 코드 + 비밀번호로 참여 | 구현 |
-| 스페이스/멤버 관리, 박스 순서 바꾸기 | 구현 |
-| 박스 한도 도달 시 `upgrade_intents` 클릭 로깅 | 구현 |
-| 파일·이미지 업로드 | **미구현 (§9 게이트 통과 후)** |
-| 결제·유료 플랜 UI | **미구현 (v2)** |
-
-플랜 한도(Free/Pro/Team)는 `plans` 테이블과 상수에 전부 들어 있지만, v1 UI는 Free만 노출합니다. 나중에 Pro/Team을 켤 때 스키마 마이그레이션이 필요 없도록 미리 넣어둔 것입니다.
-
----
-
 ## 2. Supabase 준비
 
 1. Supabase 프로젝트를 만듭니다.
 2. SQL Editor에서 [`supabase/schema.sql`](supabase/schema.sql) **전체를 한 번** 실행합니다. 여러 번 실행해도 안전합니다.
 3. Authentication → Providers → Google을 켜고 Google OAuth Client ID/Secret을 넣습니다.
 
-`schema.sql`이 만드는 것: 테이블 6개, 뷰 2개, RPC 17개, 트리거 5개, RLS 정책 8개, Realtime publication 등록.
+`schema.sql`이 만드는 것: 테이블 10개, 뷰 3개, RPC 30개, 트리거 8개, RLS 정책 12개, Realtime publication 등록.
+
+**이미 v1을 실행한 프로젝트라면** `schema.sql`을 그대로 다시 실행하면 됩니다. 모든 구문이 멱등(`if not exists` / `or replace`)이라 기존 데이터를 건드리지 않고 v2 항목만 추가합니다. 델타만 보고 싶으면 [`supabase/migrations/002-v2.sql`](supabase/migrations/002-v2.sql)에 같은 내용이 따로 있습니다.
 
 ---
 
@@ -100,9 +108,12 @@ https://<프로젝트REF>.supabase.co/auth/v1/callback
 ```js
 export const CONFIG = {
   supabaseUrl: "https://YOUR_PROJECT_REF.supabase.co",
-  supabaseAnonKey: "YOUR_SUPABASE_ANON_KEY"
+  supabaseAnonKey: "YOUR_SUPABASE_ANON_KEY",
+  webOrigin: "https://YOUR_DOMAIN"
 };
 ```
+
+`webOrigin`은 확장에서 초대 링크를 만들 때 쓰는 웹 주소입니다. 웹 앱은 현재 주소를 자동으로 씁니다.
 
 anon key는 RLS와 함께 클라이언트에서 쓰라고 만들어진 공개 키입니다. `service_role` key, DB 비밀번호, (나중에 추가될) R2 access key는 **절대** 넣지 마세요. 브리핑 §6대로 R2 키는 Edge Function에만 둡니다. `npm run check`가 이 파일에 비밀 키로 보이는 값이 있으면 실패합니다.
 
@@ -130,7 +141,9 @@ npm run check
 npm test
 ```
 
-`npm run check`는 manifest 참조 파일, CSP의 `wss://`, 모든 HTML의 인라인 스크립트와 깨진 링크, JS의 깨진 import 경로, config.js의 비밀 키, schema.sql의 필수 구문(용량 트리거 3종·auth 트리거·replica identity·RLS), 전체 JS 문법, 그리고 **모든 코드 파일에 주석이 없는지**를 검사합니다.
+`npm run check`가 검사하는 것: manifest 참조 파일과 **과도한 권한**(tabs·history·cookies·`<all_urls>`), CSP의 `wss://`, 모든 HTML의 인라인 스크립트와 깨진 링크, JS의 깨진 import 경로, config.js의 비밀 키, schema.sql의 필수 구문(용량 트리거 3종·auth 트리거·replica identity·**신규 테이블 4종의 RLS와 anon 권한 회수**), 전체 JS 문법, 그리고 **모든 코드 파일에 주석이 없는지**.
+
+`npm test`는 39개 테스트를 돌립니다 — 검색(초성·띄어쓰기·태그), 템플릿 변수, 정렬, 바이트 계산, 스토리지 폴백.
 
 ---
 
@@ -166,7 +179,10 @@ npm test
 - **용량 막대는 바이트가 아니라 박스 개수를 표시합니다.** v1은 텍스트뿐이라 50MB 대비 사용량이 항상 0%에 붙어 막대가 무의미하기 때문입니다. 파일 단계가 오면 바이트 막대로 바꾸고, 그때 §7이 요구한 "주당 50MB씩 계속" 문구를 넣어야 합니다.
 - **owner는 스페이스를 나갈 수 없습니다** (삭제만 가능). 위임 UI는 §12 미결정이라 만들지 않았습니다.
 - **한국어 전용**, 문구는 하드코딩입니다 (§12 미결정 → 한국어만으로 결정).
-- **사용량 통계는 `upgrade_intents`만** 수집합니다 (§12 미결정 → 최소 수집으로 결정).
+- **사용량 통계**: `analytics_events`에 이벤트 이름과 화면만 기록합니다. 문구 내용은 절대 보내지 않으며, 허용 이벤트 목록이 DB CHECK 제약으로 강제됩니다.
+- **즐겨찾기·사용 기록은 개인별**(`box_user_state`)입니다. 팀원끼리 서로의 즐겨찾기가 섞이지 않습니다.
+- **삽입 권한은 선택 권한**입니다. `optional_host_permissions`로 두고 사용자가 "삽입"을 처음 누를 때 요청합니다. 거절해도 복사로 동작합니다.
+- **가격**: Pro 월 4,900원(연 49,000원), Team 월 12,900원(연 129,000원, 팀원 수 무관). 좌석 과금이 아니라 스페이스 기반이라 정산이 단순합니다. 결제는 미구현이며 대기 명단만 받습니다.
 
 ---
 

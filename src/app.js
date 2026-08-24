@@ -1,4 +1,5 @@
 import * as api from "./api.js";
+import { CONFIG } from "../config.js";
 import {
   clearSession,
   isConfigured,
@@ -25,8 +26,25 @@ import {
   validateSpaceName
 } from "./format.js";
 import { BoxRealtime, REALTIME_STATUS } from "./realtime.js";
-import { readLocal, writeLocal } from "./store.js";
+import { readLocal, removeLocal, writeLocal } from "./store.js";
 import { clear, el, openChoice, openConfirm, openForm, openSheet, qs, showToast } from "./ui.js";
+import { collectTags, searchBoxes } from "./features/search.js";
+import { fillTemplate, hasVariables, promptableVariables } from "./features/templates.js";
+import { SORT_MODES, sortBoxes } from "./features/sorting.js";
+import { track } from "./features/analytics.js";
+import {
+  INSERT_MESSAGES,
+  hasPermission,
+  insertIntoActiveTab,
+  isSupported as insertSupported,
+  requestPermission
+} from "./features/insert.js";
+
+const SURFACE = typeof chrome !== "undefined" && chrome.sidePanel ? "extension" : "web";
+const PENDING_CAPTURE_KEY = "butbox.pendingCapture";
+const FOCUS_SEARCH_KEY = "butbox.focusSearch";
+const PENDING_INVITE_KEY = "butbox.pendingInvite";
+const SEARCH_DEBOUNCE_MS = 120;
 
 const state = {
   view: "loading",
@@ -37,7 +55,15 @@ const state = {
   spaceId: null,
   boxes: [],
   members: [],
+  plans: [],
+  subscription: null,
   search: "",
+  tagFilter: null,
+  sortMode: SORT_MODES.manual,
+  visibleIds: [],
+  activeIndex: -1,
+  insertAvailable: false,
+  insertPermission: false,
   liveStatus: REALTIME_STATUS.idle
 };
 
@@ -88,7 +114,72 @@ async function boot() {
     return;
   }
   state.session = session;
+  await detectInsertSupport();
+  await consumePendingInvite();
   await loadWorkspace();
+  await consumePendingCapture();
+  await consumeFocusRequest();
+  await consumeWaitlist();
+}
+
+async function consumeWaitlist() {
+  if (SURFACE !== "web" || state.view !== "main") {
+    return;
+  }
+  const plan = window.sessionStorage.getItem("butbox.waitlist");
+  if (!plan) {
+    return;
+  }
+  window.sessionStorage.removeItem("butbox.waitlist");
+  await offerUpgrade(UPGRADE_LEVERS.boxLimit, {
+    title: `${plan === "team" ? "Team" : "Pro"} 대기 명단`,
+    message: "결제가 열리면 가장 먼저 알려 드립니다."
+  });
+}
+
+async function consumePendingInvite() {
+  const token = await readLocal(PENDING_INVITE_KEY);
+  if (!token) {
+    return;
+  }
+  await removeLocal(PENDING_INVITE_KEY);
+  try {
+    const spaceId = await api.redeemInvite(token);
+    await writeLocal(STORAGE_KEYS.lastSpaceId, spaceId);
+    track("space_joined", { surface: "invite_link" });
+  } catch (error) {
+    showToast(errorMessage(error), "error");
+  }
+}
+
+async function detectInsertSupport() {
+  state.insertAvailable = insertSupported();
+  if (state.insertAvailable) {
+    state.insertPermission = await hasPermission();
+  }
+}
+
+async function consumeFocusRequest() {
+  const stamp = await readLocal(FOCUS_SEARCH_KEY);
+  if (!stamp) {
+    return;
+  }
+  await removeLocal(FOCUS_SEARCH_KEY);
+  if (state.view === "main") {
+    focusSearch();
+  }
+}
+
+async function consumePendingCapture() {
+  const pending = await readLocal(PENDING_CAPTURE_KEY);
+  if (!pending || !pending.text) {
+    return;
+  }
+  await removeLocal(PENDING_CAPTURE_KEY);
+  if (state.view !== "main" || !state.spaceId) {
+    return;
+  }
+  await saveCapturedText(pending);
 }
 
 function wireStaticHandlers() {
@@ -119,20 +210,63 @@ function wireStaticHandlers() {
   qs("#btn-space-settings").addEventListener("click", openSpaceSettings);
   qs("#btn-add-box").addEventListener("click", handleAddBox);
   qs("#btn-account").addEventListener("click", openAccountSheet);
+  qs("#meter-boxes").addEventListener("click", openPlanSheet);
+  qs("#btn-first-box").addEventListener("click", handleAddBox);
+  qs("#btn-starter").addEventListener("click", createStarterBoxes);
 
   const searchInput = qs("#box-search");
   const searchClear = qs("#btn-search-clear");
+  let searchTimer = null;
 
   searchInput.addEventListener("input", () => {
-    state.search = searchInput.value;
     searchClear.hidden = searchInput.value.length === 0;
-    renderBoxes();
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => {
+      state.search = searchInput.value;
+      state.activeIndex = searchInput.value.trim().length > 0 ? 0 : -1;
+      renderBoxes();
+      if (searchInput.value.trim().length > 1) {
+        track("search_used", { surface: SURFACE });
+      }
+    }, SEARCH_DEBOUNCE_MS);
   });
 
   searchInput.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && searchInput.value.length > 0) {
+    if (event.key === "Escape") {
       event.preventDefault();
-      resetSearch();
+      if (searchInput.value.length > 0) {
+        resetSearch();
+      } else {
+        searchInput.blur();
+      }
+      return;
+    }
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      if (state.activeIndex < 0) {
+        state.activeIndex = 0;
+        renderActiveBox();
+      } else {
+        moveActive(1);
+      }
+      return;
+    }
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      moveActive(-1);
+      return;
+    }
+    if (event.key === "Enter") {
+      event.preventDefault();
+      const id = state.visibleIds[state.activeIndex < 0 ? 0 : state.activeIndex];
+      if (!id) {
+        return;
+      }
+      if (event.shiftKey && state.insertAvailable) {
+        insertBox(id, "search");
+      } else {
+        copyBox(id, "search");
+      }
     }
   });
 
@@ -163,10 +297,19 @@ async function loadWorkspace() {
   try {
     const [profile, plans] = await Promise.all([api.fetchProfile(), api.fetchPlans()]);
     state.profile = profile;
-    state.plan = (plans ?? []).find((plan) => plan.code === profile.plan) ?? null;
+    state.plans = plans ?? [];
+    state.plan = state.plans.find((plan) => plan.code === profile.plan) ?? null;
+
+    api.fetchSubscription()
+      .then((row) => {
+        state.subscription = row;
+      })
+      .catch(() => {});
 
     await api.ensurePersonalSpace();
     state.spaces = (await api.fetchSpaces()) ?? [];
+
+    state.sortMode = (await readLocal("butbox.sortMode")) ?? SORT_MODES.manual;
 
     const remembered = await readLocal(STORAGE_KEYS.lastSpaceId);
     const target =
@@ -198,13 +341,21 @@ function resetSearch() {
   const searchClear = qs("#btn-search-clear");
   searchInput.value = "";
   state.search = "";
+  state.activeIndex = -1;
   searchClear.hidden = true;
   renderBoxes();
+}
+
+function focusSearch() {
+  const searchInput = qs("#box-search");
+  searchInput.focus();
+  searchInput.select();
 }
 
 async function selectSpace(spaceId) {
   await flushAllPending();
   resetSearch();
+  state.tagFilter = null;
   state.spaceId = spaceId;
   for (const view of boxViews.values()) {
     clearTimeout(view.timer);
@@ -259,20 +410,26 @@ function handleRealtimeChange({ type, record, previous }) {
   if (!record || record.space_id !== state.spaceId) {
     return;
   }
+  const index = state.boxes.findIndex((box) => box.id === record.id);
+  const local = index === -1 ? {} : state.boxes[index];
   const incoming = {
+    ...local,
     id: record.id,
     space_id: record.space_id,
     name: record.name,
     kind: record.kind,
     text_content: record.text_content ?? "",
+    tags: Array.isArray(record.tags) ? record.tags : local.tags ?? [],
     byte_size: Number(record.byte_size ?? 0),
     locked: Boolean(record.locked),
     sort_order: Number(record.sort_order ?? 0),
     updated_at: record.updated_at,
-    updated_by: record.updated_by
+    updated_by: record.updated_by,
+    is_favorite: Boolean(local.is_favorite),
+    use_count: Number(local.use_count ?? 0),
+    last_used_at: local.last_used_at ?? null
   };
 
-  const index = state.boxes.findIndex((box) => box.id === incoming.id);
   if (index === -1) {
     state.boxes = [...state.boxes, incoming].sort(compareBoxes);
   } else {
@@ -348,20 +505,18 @@ function renderLiveDot() {
   dot.title = labels[state.liveStatus] ?? "";
 }
 
-function matchesSearch(box, query) {
-  if (!query) {
-    return true;
-  }
-  const name = String(box.name ?? "").toLowerCase();
-  const body = String(box.text_content ?? "").toLowerCase();
-  return name.includes(query) || body.includes(query);
+function visibleBoxes() {
+  const filtered = state.tagFilter
+    ? state.boxes.filter((box) => (box.tags ?? []).includes(state.tagFilter))
+    : state.boxes;
+  const sorted = sortBoxes(filtered, state.sortMode, state.sortMode !== SORT_MODES.name);
+  return searchBoxes(sorted, state.search);
 }
 
 function renderBoxes() {
   const list = qs("#box-list");
   const empty = qs("#box-empty");
   const noMatch = qs("#box-nomatch");
-  const query = state.search.trim().toLowerCase();
   const present = new Set(state.boxes.map((box) => box.id));
 
   for (const [id, view] of boxViews) {
@@ -381,7 +536,7 @@ function renderBoxes() {
     updateBoxView(view, box);
   }
 
-  const visible = state.boxes.filter((box) => matchesSearch(box, query));
+  const visible = visibleBoxes();
   const visibleIds = new Set(visible.map((box) => box.id));
 
   for (const [id, view] of boxViews) {
@@ -397,11 +552,80 @@ function renderBoxes() {
     }
   });
 
+  state.visibleIds = visible.map((box) => box.id);
+  if (state.activeIndex >= visible.length) {
+    state.activeIndex = visible.length - 1;
+  }
+  renderActiveBox();
+
   list.hidden = visible.length === 0;
   empty.hidden = state.boxes.length > 0;
   noMatch.hidden = state.boxes.length === 0 || visible.length > 0;
+  renderTagFilter();
   renderMeter();
   renderAddButton();
+}
+
+function renderActiveBox() {
+  for (const [id, view] of boxViews) {
+    const active = state.activeIndex >= 0 && state.visibleIds[state.activeIndex] === id;
+    view.root.dataset.active = active ? "true" : "false";
+    if (active && view.root.parentNode) {
+      view.root.scrollIntoView({ block: "nearest" });
+    }
+  }
+}
+
+function moveActive(delta) {
+  if (state.visibleIds.length === 0) {
+    return;
+  }
+  const next = state.activeIndex + delta;
+  state.activeIndex = Math.max(0, Math.min(state.visibleIds.length - 1, next));
+  renderActiveBox();
+}
+
+function renderTagFilter() {
+  const host = qs("#tag-filter");
+  const tags = collectTags(state.boxes);
+  clear(host);
+
+  if (tags.length === 0) {
+    host.hidden = true;
+    return;
+  }
+  host.hidden = false;
+
+  host.append(
+    el("button", {
+      class: "chip",
+      type: "button",
+      text: "전체",
+      dataset: { on: state.tagFilter === null ? "true" : "false" },
+      onclick: () => {
+        state.tagFilter = null;
+        state.activeIndex = -1;
+        renderBoxes();
+      }
+    })
+  );
+
+  for (const entry of tags) {
+    host.append(
+      el("button", {
+        class: "chip",
+        type: "button",
+        text: entry.tag,
+        title: `${entry.tag} · ${entry.count}개`,
+        dataset: { on: state.tagFilter === entry.tag ? "true" : "false" },
+        onclick: () => {
+          state.tagFilter = state.tagFilter === entry.tag ? null : entry.tag;
+          state.activeIndex = -1;
+          renderBoxes();
+        }
+      })
+    );
+  }
 }
 
 function renderAddButton() {
@@ -421,8 +645,18 @@ function renderAddButton() {
 }
 
 function createBoxView(box) {
+  const starEl = el("button", {
+    class: "box__star",
+    type: "button",
+    onclick: (event) => {
+      event.stopPropagation();
+      toggleFavorite(box.id);
+    }
+  });
+
   const nameEl = el("span", { class: "box__name" });
   const previewEl = el("span", { class: "box__preview" });
+  const tagsEl = el("span", { class: "box__tags" });
 
   const openButton = el(
     "button",
@@ -431,24 +665,43 @@ function createBoxView(box) {
       type: "button",
       onclick: () => openBoxEditor(box.id)
     },
-    [nameEl, previewEl]
+    [nameEl, previewEl, tagsEl]
   );
 
   const copyButton = el("button", {
-    class: "box__copy",
+    class: "box__act",
     type: "button",
     text: "복사",
-    onclick: () => copyBox(box.id)
+    onclick: () => copyBox(box.id, "card")
   });
 
-  const root = el("article", { class: "box", dataset: { boxId: box.id } }, [openButton, copyButton]);
+  const actions = el("div", { class: "box__acts" }, [copyButton]);
+
+  let insertButton = null;
+  if (state.insertAvailable) {
+    insertButton = el("button", {
+      class: "box__act box__act--ghost",
+      type: "button",
+      text: "삽입",
+      onclick: () => insertBox(box.id, "card")
+    });
+    actions.append(insertButton);
+  }
+
+  const root = el("article", { class: "box", dataset: { boxId: box.id, active: "false" } }, [
+    el("div", { class: "box__top" }, [openButton, starEl]),
+    actions
+  ]);
 
   return {
     root,
+    starEl,
     nameEl,
     previewEl,
+    tagsEl,
     openButton,
     copyButton,
+    insertButton,
     timer: null,
     dirty: false,
     saving: false,
@@ -469,6 +722,17 @@ function updateBoxView(view, box) {
   }
   view.openButton.title = box.name;
   view.root.dataset.locked = box.locked ? "true" : "false";
+  view.root.dataset.template = hasVariables(box.text_content) ? "true" : "false";
+
+  const favorite = Boolean(box.is_favorite);
+  view.starEl.textContent = favorite ? "★" : "☆";
+  view.starEl.dataset.on = favorite ? "true" : "false";
+  view.starEl.title = favorite ? "즐겨찾기 해제" : "즐겨찾기";
+  view.starEl.setAttribute("aria-label", view.starEl.title);
+
+  const tags = box.tags ?? [];
+  view.tagsEl.textContent = tags.length > 0 ? tags.map((tag) => `#${tag}`).join(" ") : "";
+  view.tagsEl.hidden = tags.length === 0;
 
   const serverValue = box.text_content ?? "";
   const editing = Boolean(view.editor) && document.activeElement === view.editor.textarea;
@@ -555,6 +819,162 @@ function updateSizeLabel(view) {
   view.editor.sizeEl.dataset.over = size > TEXT_MAX_BYTES ? "true" : "false";
 }
 
+async function toggleFavorite(boxId) {
+  const index = state.boxes.findIndex((item) => item.id === boxId);
+  if (index === -1) {
+    return;
+  }
+  const next = !state.boxes[index].is_favorite;
+  state.boxes[index] = { ...state.boxes[index], is_favorite: next };
+  renderBoxes();
+  try {
+    await api.setBoxFavorite(boxId, next);
+    if (next) {
+      track("favorite_used", { surface: SURFACE });
+    }
+  } catch (error) {
+    state.boxes[index] = { ...state.boxes[index], is_favorite: !next };
+    renderBoxes();
+    reportError(error);
+  }
+}
+
+async function resolveOutput(boxId) {
+  const view = boxViews.get(boxId);
+  if (!view) {
+    return null;
+  }
+  const source = view.draft ?? "";
+  const variables = promptableVariables(source);
+  if (variables.length === 0) {
+    return { text: fillTemplate(source, {}), direct: true };
+  }
+
+  const values = await openForm({
+    title: "값을 채워 주세요",
+    description: `${view.box.name}에 채울 값입니다.`,
+    fields: variables.map((name, index) => ({
+      name,
+      label: name,
+      placeholder: name,
+      maxLength: 200,
+      value: index === 0 ? "" : ""
+    })),
+    submitLabel: "만들기"
+  });
+  if (!values) {
+    return null;
+  }
+  track("template_filled", { surface: SURFACE });
+  return { text: fillTemplate(source, values), direct: false };
+}
+
+function markUsed(boxId) {
+  const index = state.boxes.findIndex((item) => item.id === boxId);
+  if (index !== -1) {
+    state.boxes[index] = {
+      ...state.boxes[index],
+      use_count: Number(state.boxes[index].use_count ?? 0) + 1,
+      last_used_at: new Date().toISOString()
+    };
+  }
+  api.touchBox(boxId).catch(() => {});
+}
+
+function copyBox(boxId, surface) {
+  const view = boxViews.get(boxId);
+  if (!view) {
+    return;
+  }
+
+  const variables = promptableVariables(view.draft ?? "");
+  if (variables.length === 0) {
+    const loader = view.dirty
+      ? () => fillTemplate(view.draft, {})
+      : () => api.fetchBoxText(boxId).then((text) => fillTemplate(text, {}));
+    copyTextFrom(loader)
+      .then((text) => finishCopy(view, boxId, text, surface))
+      .catch((error) => reportError(error));
+    return;
+  }
+
+  resolveOutput(boxId)
+    .then((result) => {
+      if (!result) {
+        return null;
+      }
+      return copyTextFrom(() => result.text).then((text) => finishCopy(view, boxId, text, surface));
+    })
+    .catch((error) => reportError(error));
+}
+
+function finishCopy(view, boxId, text, surface) {
+  if (!text) {
+    showToast("이 박스는 비어 있습니다.", "info");
+    return;
+  }
+  const busy = view.dirty || view.saving;
+  if (!busy && !hasVariables(view.draft) && text !== view.draft) {
+    view.draft = text;
+    view.savedValue = text;
+    renderPreview(view);
+    if (view.editor) {
+      view.editor.textarea.value = text;
+    }
+  }
+  markUsed(boxId);
+  track("box_copied", { surface: surface ?? SURFACE });
+  showToast(`복사했습니다 · ${previewText(text, 22)}`, "success");
+}
+
+async function insertBox(boxId, surface) {
+  if (!state.insertAvailable) {
+    copyBox(boxId, surface);
+    return;
+  }
+
+  if (!state.insertPermission) {
+    const granted = await requestInsertPermission();
+    if (!granted) {
+      showToast("권한을 허용하지 않아 복사로 대신합니다.", "info");
+      copyBox(boxId, surface);
+      return;
+    }
+  }
+
+  const result = await resolveOutput(boxId);
+  if (!result) {
+    return;
+  }
+  if (!result.text) {
+    showToast("이 박스는 비어 있습니다.", "info");
+    return;
+  }
+
+  const outcome = await insertIntoActiveTab(result.text);
+  if (outcome.ok) {
+    markUsed(boxId);
+    track("box_inserted", { surface: surface ?? SURFACE });
+    showToast("입력창에 넣었습니다.", "success");
+    return;
+  }
+
+  try {
+    await copyTextFrom(() => result.text);
+    markUsed(boxId);
+    track("box_copied", { surface: surface ?? SURFACE, reason: outcome.reason });
+    showToast(INSERT_MESSAGES[outcome.reason] ?? INSERT_MESSAGES.FAILED, "info");
+  } catch (error) {
+    reportError(error);
+  }
+}
+
+async function requestInsertPermission() {
+  const granted = await requestPermission();
+  state.insertPermission = granted;
+  return granted;
+}
+
 async function openBoxEditor(boxId) {
   const view = boxViews.get(boxId);
   if (!view) {
@@ -602,7 +1022,7 @@ async function openBoxEditor(boxId) {
         const pasted = readPastedText(event);
         if (pasted && pasted.kind !== "text") {
           event.preventDefault();
-          showToast("지금은 텍스트만 담을 수 있습니다. 파일과 이미지는 다음 단계입니다.", "info");
+          showToast("지금은 텍스트만 담을 수 있습니다.", "info");
           return;
         }
         setTimeout(() => {
@@ -617,29 +1037,51 @@ async function openBoxEditor(boxId) {
         flushPending(boxId);
       });
 
+      const hint = el("p", {
+        class: "editor__hint",
+        text: "{{고객명}} 처럼 적으면 복사할 때 값을 물어봅니다. {{오늘}}은 자동으로 채워집니다."
+      });
+
+      const actions = el("div", { class: "editor__actions" }, [
+        el("button", {
+          class: "btn btn--primary",
+          type: "button",
+          text: "복사",
+          onclick: () => copyBox(boxId, "editor")
+        })
+      ]);
+
+      if (state.insertAvailable) {
+        actions.append(
+          el("button", {
+            class: "btn",
+            type: "button",
+            text: "삽입",
+            onclick: () => insertBox(boxId, "editor")
+          })
+        );
+      }
+
+      actions.append(
+        el("button", {
+          class: "btn",
+          type: "button",
+          text: "더보기",
+          onclick: async () => {
+            close(null);
+            await openBoxMenu(boxId);
+          }
+        })
+      );
+
       body.append(
         el("div", { class: "editor" }, [
           textarea,
           badge,
-          el("div", { class: "editor__meta" }, [statusEl, sizeEl])
+          el("div", { class: "editor__meta" }, [statusEl, sizeEl]),
+          hint
         ]),
-        el("div", { class: "editor__actions" }, [
-          el("button", {
-            class: "btn btn--primary",
-            type: "button",
-            text: "복사",
-            onclick: () => copyBox(boxId)
-          }),
-          el("button", {
-            class: "btn",
-            type: "button",
-            text: "더보기",
-            onclick: async () => {
-              close(null);
-              await openBoxMenu(boxId);
-            }
-          })
-        ])
+        actions
       );
 
       refreshEditor(view);
@@ -757,32 +1199,6 @@ function applyRemote(boxId) {
   showToast("팀원이 저장한 내용을 불러왔습니다.", "success");
 }
 
-function copyBox(boxId) {
-  const view = boxViews.get(boxId);
-  if (!view) {
-    return;
-  }
-  const loader = view.dirty ? () => view.draft : () => api.fetchBoxText(boxId);
-  copyTextFrom(loader)
-    .then((text) => {
-      if (!text) {
-        showToast("이 박스는 비어 있습니다.", "info");
-        return;
-      }
-      const busy = view.dirty || view.saving;
-      if (!busy && text !== view.draft) {
-        view.draft = text;
-        view.savedValue = text;
-        renderPreview(view);
-        if (view.editor) {
-          view.editor.textarea.value = text;
-        }
-      }
-      showToast(`복사했습니다 · ${previewText(text, 24)}`, "success");
-    })
-    .catch((error) => reportError(error));
-}
-
 async function renameBox(boxId) {
   const box = state.boxes.find((item) => item.id === boxId);
   if (!box) {
@@ -841,7 +1257,15 @@ async function openBoxMenu(boxId) {
     return;
   }
 
-  const options = [{ value: "rename", label: "이름 바꾸기" }];
+  const options = [
+    { value: "rename", label: "이름 바꾸기" },
+    { value: "tags", label: "태그", description: (box.tags ?? []).join(", ") || "태그 없음" },
+    {
+      value: "favorite",
+      label: box.is_favorite ? "즐겨찾기 해제" : "즐겨찾기에 추가"
+    },
+    { value: "duplicate", label: "복제" }
+  ];
   if (index > 0) {
     options.push({ value: "up", label: "위로 옮기기" });
   }
@@ -857,6 +1281,21 @@ async function openBoxMenu(boxId) {
 
   if (choice === "rename") {
     await renameBox(boxId);
+    return;
+  }
+
+  if (choice === "tags") {
+    await editBoxTags(boxId);
+    return;
+  }
+
+  if (choice === "favorite") {
+    await toggleFavorite(boxId);
+    return;
+  }
+
+  if (choice === "duplicate") {
+    await duplicateBox(boxId);
     return;
   }
 
@@ -907,10 +1346,7 @@ async function handleAddBox() {
   }
 
   if (Number(space.box_count ?? state.boxes.length) >= Number(space.box_limit ?? 0)) {
-    await offerUpgrade(UPGRADE_LEVERS.boxLimit, {
-      title: "박스를 다 썼습니다",
-      message: `이 스페이스는 박스 ${space.box_limit}개까지 쓸 수 있습니다. 더 필요하면 알려 주세요. 지금은 신청만 받아 두고, 수요가 모이면 늘려 드립니다.`
-    });
+    await offerUpgrade(UPGRADE_LEVERS.boxLimit, boxLimitCopy());
     return;
   }
 
@@ -935,24 +1371,8 @@ async function handleAddBox() {
   try {
     await api.createBox(space.id, validateBoxName(values.name).value);
     await refreshBoxes();
+    track("box_created", { surface: SURFACE });
     showToast("박스를 만들었습니다.", "success");
-  } catch (error) {
-    reportError(error);
-  }
-}
-
-async function offerUpgrade(lever, { title, message }) {
-  const confirmed = await openConfirm({
-    title,
-    message,
-    confirmLabel: "더 필요해요"
-  });
-  if (!confirmed) {
-    return;
-  }
-  try {
-    await api.logUpgradeIntent(lever, state.spaceId);
-    showToast("신청을 남겼습니다. 고맙습니다.", "success");
   } catch (error) {
     reportError(error);
   }
@@ -1011,6 +1431,7 @@ async function handleCreateSpace() {
     const spaceId = await api.createSpace(validateSpaceName(values.name).value);
     await refreshSpaces();
     await selectSpace(spaceId);
+    track("space_created", { surface: SURFACE });
     showToast("스페이스를 만들었습니다.", "success");
   } catch (error) {
     if (String(error?.message ?? "").includes("SPACE_LIMIT_REACHED")) {
@@ -1058,6 +1479,7 @@ async function handleJoinSpace() {
     );
     await refreshSpaces();
     await selectSpace(spaceId);
+    track("space_joined", { surface: SURFACE });
     showToast("스페이스에 참여했습니다.", "success");
   } catch (error) {
     reportError(error);
@@ -1161,10 +1583,10 @@ async function openSpaceSettings() {
           el("button", {
             class: "btn btn--block",
             type: "button",
-            text: space.join_enabled ? "비밀번호 다시 만들기" : "팀원 초대 열기",
+            text: "팀원 초대",
             onclick: async () => {
               close(null);
-              await setupInvite(space);
+              await openInvitePanel(space);
             }
           })
         );
@@ -1396,10 +1818,32 @@ async function openAccountSheet() {
     title: state.profile?.email ?? "계정",
     description: `${planLabel} 플랜 · 스페이스 ${state.spaces.length}개`,
     options: [
+      { value: "plan", label: "요금제 보기", description: "무료 한도와 Pro/Team 비교" },
+      { value: "sort", label: `정렬 · ${sortLabel(state.sortMode)}`, description: "내 순서 / 최근 사용 / 이름" },
+      state.insertAvailable && !state.insertPermission
+        ? { value: "grant", label: "삽입 권한 허용", description: "입력창에 바로 넣으려면 필요합니다." }
+        : null,
       { value: "refresh", label: "새로고침", description: "서버에서 최신 상태를 다시 받아옵니다." },
       { value: "signout", label: "로그아웃", danger: true }
-    ]
+    ].filter(Boolean)
   });
+
+  if (choice === "plan") {
+    await openPlanSheet();
+    return;
+  }
+
+  if (choice === "sort") {
+    await pickSortMode();
+    return;
+  }
+
+  if (choice === "grant") {
+    const granted = await requestInsertPermission();
+    showToast(granted ? "이제 입력창에 바로 넣을 수 있습니다." : "권한을 허용하지 않았습니다.", granted ? "success" : "info");
+    renderBoxes();
+    return;
+  }
 
   if (choice === "refresh") {
     await loadWorkspace();
@@ -1417,6 +1861,339 @@ async function openAccountSheet() {
     clear(qs("#box-list"));
     setView("signin");
   }
+}
+
+function sortLabel(mode) {
+  if (mode === SORT_MODES.recent) {
+    return "최근 사용";
+  }
+  if (mode === SORT_MODES.name) {
+    return "이름";
+  }
+  return "내 순서";
+}
+
+async function pickSortMode() {
+  const choice = await openChoice({
+    title: "정렬",
+    description: "즐겨찾기는 항상 위에 붙습니다.",
+    options: [
+      { value: SORT_MODES.manual, label: "내 순서", description: "직접 옮긴 순서 그대로" },
+      { value: SORT_MODES.recent, label: "최근 사용", description: "방금 쓴 박스가 위로" },
+      { value: SORT_MODES.name, label: "이름", description: "가나다순" }
+    ]
+  });
+  if (!choice) {
+    return;
+  }
+  state.sortMode = choice;
+  await writeLocal("butbox.sortMode", choice);
+  renderBoxes();
+  showToast(`${sortLabel(choice)} 순서로 봅니다.`, "success");
+}
+
+async function saveCapturedText(capture) {
+  const space = currentSpace();
+  if (!space) {
+    return;
+  }
+
+  const suggested = previewText(capture.text, 24) || "새 박스";
+  const values = await openForm({
+    title: "붙박스에 저장",
+    description: previewText(capture.text, 140),
+    fields: [
+      {
+        name: "name",
+        label: "이름표",
+        value: suggested,
+        maxLength: 40,
+        validate: validateBoxName
+      }
+    ],
+    submitLabel: "저장"
+  });
+  if (!values) {
+    return;
+  }
+
+  let body = capture.text;
+  if (capture.url) {
+    const withSource = await openConfirm({
+      title: "출처도 같이 넣을까요?",
+      message: `${capture.title || "제목 없음"}\n${capture.url}`,
+      confirmLabel: "같이 저장"
+    });
+    if (withSource) {
+      body = `${capture.text}\n\n${capture.title || ""}\n${capture.url}`.trim();
+    }
+  }
+
+  try {
+    const boxId = await api.createBox(space.id, validateBoxName(values.name).value);
+    await api.saveBoxText(boxId, body.slice(0, 10240));
+    await refreshBoxes();
+    track("context_saved", { surface: SURFACE });
+    track("box_created", { surface: "context_menu" });
+    showToast("박스에 저장했습니다.", "success");
+  } catch (error) {
+    if (String(error?.message ?? "").includes("BOX_LIMIT_REACHED")) {
+      await offerUpgrade(UPGRADE_LEVERS.boxLimit, boxLimitCopy());
+      return;
+    }
+    reportError(error);
+  }
+}
+
+function planByCode(code) {
+  return state.plans.find((plan) => plan.code === code) ?? null;
+}
+
+function formatWon(value) {
+  return `${Number(value ?? 0).toLocaleString("ko-KR")}원`;
+}
+
+function boxLimitCopy() {
+  const space = currentSpace();
+  const pro = planByCode("pro");
+  const limit = space ? space.box_limit : 10;
+  const message = pro
+    ? `박스 ${limit}개를 모두 쓰고 있습니다.\nPro에서는 ${pro.box_limit}개까지 저장할 수 있습니다. (월 ${formatWon(pro.price_monthly_krw)})`
+    : `박스 ${limit}개를 모두 쓰고 있습니다.`;
+  return { title: "박스가 가득 찼습니다", message };
+}
+
+async function offerUpgrade(lever, { title, message }) {
+  track("upgrade_clicked", { lever, surface: SURFACE });
+  const confirmed = await openConfirm({
+    title,
+    message: `${message}\n\n아직 결제는 준비 중입니다. 관심을 남겨 주시면 열릴 때 가장 먼저 알려 드립니다.`,
+    confirmLabel: "관심 있어요"
+  });
+  if (!confirmed) {
+    return;
+  }
+  try {
+    await api.logUpgradeIntent(lever, state.spaceId);
+    track("upgrade_started", { lever, surface: SURFACE });
+    showToast("신청을 남겼습니다. 고맙습니다.", "success");
+  } catch (error) {
+    reportError(error);
+  }
+}
+
+async function editBoxTags(boxId) {
+  const box = state.boxes.find((item) => item.id === boxId);
+  if (!box) {
+    return;
+  }
+  const values = await openForm({
+    title: "태그",
+    description: "쉼표로 구분해서 적으세요. 검색창에서 #태그로 걸러 볼 수 있습니다.",
+    fields: [
+      {
+        name: "tags",
+        label: "태그",
+        value: (box.tags ?? []).join(", "),
+        placeholder: "CS, 환불",
+        maxLength: 200
+      }
+    ],
+    submitLabel: "저장"
+  });
+  if (!values) {
+    return;
+  }
+  const list = String(values.tags)
+    .split(",")
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+  try {
+    const saved = await api.setBoxTags(boxId, list);
+    const index = state.boxes.findIndex((item) => item.id === boxId);
+    if (index !== -1) {
+      state.boxes[index] = { ...state.boxes[index], tags: saved ?? [] };
+    }
+    renderBoxes();
+    showToast("태그를 저장했습니다.", "success");
+  } catch (error) {
+    reportError(error);
+  }
+}
+
+async function duplicateBox(boxId) {
+  try {
+    await api.duplicateBox(boxId);
+    await refreshBoxes();
+    track("box_duplicated", { surface: SURFACE });
+    showToast("박스를 복제했습니다.", "success");
+  } catch (error) {
+    if (String(error?.message ?? "").includes("BOX_LIMIT_REACHED")) {
+      await offerUpgrade(UPGRADE_LEVERS.boxLimit, boxLimitCopy());
+      return;
+    }
+    reportError(error);
+  }
+}
+
+async function openInvitePanel(space) {
+  let token = null;
+  try {
+    token = await api.createInvite(space.id, "member", 7);
+    track("invite_created", { surface: SURFACE });
+  } catch (error) {
+    reportError(error);
+    return;
+  }
+
+  const link = `${webOrigin()}/join.html?t=${token}`;
+  await openSheet({
+    title: "팀원 초대",
+    build: (body, close) => {
+      body.append(
+        el("p", { class: "modal__desc", text: "이 링크를 받은 사람은 7일 안에 이 스페이스에 참여할 수 있습니다." }),
+        el("div", { class: "row" }, [
+          el("span", { class: "row__label", text: "초대 링크" }),
+          el("code", { class: "code code--wrap", text: link })
+        ]),
+        el("div", { class: "sheet__actions" }, [
+          el("button", {
+            class: "btn btn--primary btn--block",
+            type: "button",
+            text: "링크 복사",
+            onclick: () => {
+              copyTextFrom(() => link)
+                .then(() => showToast("초대 링크를 복사했습니다.", "success"))
+                .catch((error) => reportError(error));
+            }
+          }),
+          el("button", {
+            class: "btn btn--block",
+            type: "button",
+            text: "코드와 비밀번호로 초대하기",
+            onclick: async () => {
+              close(null);
+              await setupInvite(space);
+            }
+          }),
+          el("button", {
+            class: "btn btn--block btn--danger",
+            type: "button",
+            text: "발급한 링크 모두 취소",
+            onclick: async () => {
+              close(null);
+              try {
+                await api.revokeInvites(space.id);
+                showToast("초대 링크를 모두 취소했습니다.", "success");
+              } catch (error) {
+                reportError(error);
+              }
+            }
+          })
+        ])
+      );
+    }
+  });
+}
+
+function webOrigin() {
+  if (SURFACE === "web") {
+    return window.location.origin;
+  }
+  return CONFIG.webOrigin ?? "https://butbox.app";
+}
+
+async function changeMemberRole(space, member) {
+  const next = member.role === "admin" ? "member" : "admin";
+  const confirmed = await openConfirm({
+    title: next === "admin" ? "관리자로 올릴까요?" : "일반 멤버로 내릴까요?",
+    message:
+      next === "admin"
+        ? `${member.display_name || member.email} 님이 팀원을 초대하고 관리할 수 있게 됩니다.`
+        : `${member.display_name || member.email} 님의 관리 권한을 거둡니다.`,
+    confirmLabel: "변경"
+  });
+  if (!confirmed) {
+    return;
+  }
+  try {
+    await api.setMemberRole(space.id, member.user_id, next);
+    state.members = (await api.fetchMembers(space.id)) ?? [];
+    showToast("권한을 바꿨습니다.", "success");
+  } catch (error) {
+    reportError(error);
+  }
+}
+
+const STARTER_BOXES = [
+  { name: "환불 안내", text: "안녕하세요 {{고객명}}님.\n주문번호 {{주문번호}}의 환불이 접수되었습니다. 영업일 기준 3일 이내에 처리됩니다." },
+  { name: "배송 안내", text: "주문하신 상품은 오늘 출고되었습니다. 송장번호는 {{송장번호}}입니다." },
+  { name: "회사 계좌", text: "국민은행 123456-01-789012\n예금주 (주)한빛상사" }
+];
+
+async function createStarterBoxes() {
+  const space = currentSpace();
+  if (!space) {
+    return;
+  }
+  try {
+    for (const starter of STARTER_BOXES) {
+      const boxId = await api.createBox(space.id, starter.name);
+      await api.saveBoxText(boxId, starter.text);
+    }
+    await refreshBoxes();
+    track("box_created", { surface: "starter", count: STARTER_BOXES.length });
+    showToast("예시 박스를 만들었습니다. 내용을 바꿔서 쓰세요.", "success");
+  } catch (error) {
+    reportError(error);
+  }
+}
+
+function renderPlanRow(plan, current) {
+  return el("div", { class: "plan", dataset: { current: current ? "true" : "false" } }, [
+    el("div", { class: "plan__head" }, [
+      el("strong", { class: "plan__name", text: plan.label }),
+      el("span", {
+        class: "plan__price",
+        text: plan.price_monthly_krw > 0 ? `월 ${formatWon(plan.price_monthly_krw)}` : "무료"
+      })
+    ]),
+    el("span", {
+      class: "plan__detail",
+      text: `박스 ${plan.box_limit}개 · 스페이스 ${plan.space_limit}개 · 멤버 ${plan.member_limit}명`
+    })
+  ]);
+}
+
+async function openPlanSheet() {
+  const current = state.profile?.plan ?? "free";
+  await openSheet({
+    title: "요금제",
+    build: (body) => {
+      for (const plan of state.plans) {
+        body.append(renderPlanRow(plan, plan.code === current));
+      }
+      body.append(
+        el("p", {
+          class: "modal__desc",
+          text: "지금은 무료 플랜만 실제로 쓸 수 있습니다. 결제는 준비 중이며, 관심을 남기면 열릴 때 알려 드립니다."
+        }),
+        el("div", { class: "sheet__actions" }, [
+          el("button", {
+            class: "btn btn--primary btn--block",
+            type: "button",
+            text: "Pro에 관심 있어요",
+            onclick: async () => {
+              await offerUpgrade(UPGRADE_LEVERS.boxLimit, {
+                title: "Pro 대기 명단",
+                message: "결제가 열리면 가장 먼저 알려 드립니다."
+              });
+            }
+          })
+        ])
+      );
+    }
+  });
 }
 
 boot().catch((error) => {

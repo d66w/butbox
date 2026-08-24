@@ -40,15 +40,22 @@
 > 텍스트 기능만 완성되면 거기서 멈추고 실제 팀에서 2주간 사용해본다.
 > **아무도 시키지 않았는데 3일 이상 계속 쓰는 사람이 있는가?**
 
-- [ ] 실제 팀(고객센터, 경리, 반복 안내 문구를 쓰는 사람)에 배포
+- [ ] 실제 CS팀에 배포 (반복 안내 문구를 쓰는 사람)
 - [ ] 2주간 관찰
-- [ ] 판정:
-  - **있다** → 2단계로
-  - **없다** → 여기서 멈춤. 파일 기능을 만들지 않습니다
+- [ ] 판정: **있다** → 2단계로 / **없다** → 여기서 멈춤
 
-관찰할 것: 누가 며칠 연속 썼는지, 어떤 박스를 만들었는지, 몇 명이 스페이스에 참여했는지. `upgrade_intents` 테이블에 "더 필요해요" 클릭이 쌓이는지도 봅니다.
+이제 판정에 쓸 데이터가 코드 안에 있습니다.
 
----
+```sql
+select user_id, count(*) filter (where event = 'box_copied') as copies,
+       count(distinct date_trunc('day', created_at)) as active_days
+from analytics_events
+where created_at > now() - interval '14 days'
+group by user_id
+order by active_days desc;
+```
+
+`active_days >= 3`인 사용자가 한 명이라도 있으면 게이트 통과입니다. `upgrade_intents`에 쌓인 관심도 함께 봅니다.
 
 ## 2단계 — 파일·이미지 (게이트 통과 후에만)
 
@@ -66,9 +73,11 @@
 
 ---
 
-## 3단계 — 결제 (v2)
+## 3단계 — 결제
 
-브리핑 §10에 설계는 확정, 구현은 v2입니다. v1은 `upgrade_intents` 클릭 로그만 쌓습니다. **실제 수요가 확인되면** 그때 만듭니다.
+DB 구조는 이미 준비돼 있습니다: `subscriptions`(plan, status, trial_ends_at, current_period_end, cancel_at_period_end, provider, external_id)와 `sync_profile_plan` 트리거가 구독 상태를 `profiles.plan`과 스페이스 한도에 자동 반영합니다. 남은 건 결제 provider 연결뿐입니다.
+
+**실제 수요가 확인되면** 그때 만듭니다. 지금은 `upgrade_intents`와 `analytics_events`의 `upgrade_clicked`/`upgrade_started`로 수요를 셉니다.
 
 - [ ] Lemon Squeezy(MoR) 연동 — Stripe 직접 쓰면 해외 소비세 신고 의무가 생깁니다
 - [ ] 애드온은 기존 구독에 얹는 방식(proration)으로만 — 별도 결제로 팔면 $0.50 고정 수수료가 저가 상품을 잠식합니다
@@ -80,11 +89,12 @@
 
 답이 필요해지면 추측하지 말고 상의합니다.
 
-- [ ] Team 티어를 실제로 팔지 — 현재 스키마/상수엔 3단계 다 있고 UI엔 Free만 노출
-- [ ] 가격 수준이 적정한지 ($45/년)
-- [ ] 스페이스 owner 위임 UI — 현재는 owner가 나갈 수 없고 삭제만 가능
-- [ ] 다국어 — 현재 한국어 전용, 문구 하드코딩
-- [ ] 사용량 통계 수집 범위 — 현재 `upgrade_intents`만
+- [x] Team 티어 — 3단계 모두 DB와 가격 페이지에 반영, 결제만 미구현
+- [x] 가격 — Pro 월 4,900원 / Team 월 12,900원으로 결정 (한국 시장 기준, 스페이스 기반 과금)
+- [x] 사용량 통계 범위 — 이벤트 이름과 화면만. 문구 내용 제외, DB CHECK로 강제
+- [ ] **스페이스 owner 위임 UI** — owner는 여전히 나갈 수 없고 삭제만 가능. admin 역할은 추가됐지만 소유권 이전은 미구현
+- [ ] 다국어 — 한국어 전용, 문구 하드코딩
+- [ ] AI 기능(문구 다듬기·번역) — API 비용 때문에 초기엔 넣지 않음. Pro 차별화가 필요해지면 재검토
 
 ---
 

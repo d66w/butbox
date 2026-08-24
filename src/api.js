@@ -88,10 +88,8 @@ export function fetchMembers(spaceId) {
 
 export function fetchBoxes(spaceId) {
   return query(
-    "boxes",
-    `select=id,space_id,name,kind,text_content,byte_size,locked,sort_order,updated_at,updated_by&space_id=eq.${encodeURIComponent(
-      spaceId
-    )}&order=sort_order.asc,created_at.asc`
+    "box_list",
+    `select=*&space_id=eq.${encodeURIComponent(spaceId)}&order=sort_order.asc,created_at.asc`
   );
 }
 
@@ -173,4 +171,52 @@ export function saveBoxText(boxId, text) {
 
 export function deleteBox(boxId) {
   return request(`/rest/v1/boxes?id=eq.${encodeURIComponent(boxId)}`, { method: "DELETE" });
+}
+
+export function fetchSubscription() {
+  return rpc("current_subscription");
+}
+
+export function setBoxFavorite(boxId, favorite) {
+  return rpc("set_box_favorite", { p_box_id: boxId, p_favorite: favorite });
+}
+
+export function touchBox(boxId) {
+  return rpc("touch_box", { p_box_id: boxId });
+}
+
+export function setBoxTags(boxId, tags) {
+  return rpc("set_box_tags", { p_box_id: boxId, p_tags: tags });
+}
+
+export function duplicateBox(boxId) {
+  return rpc("duplicate_box", { p_box_id: boxId });
+}
+
+export function logEvent(event, props) {
+  return rpc("log_event", { p_event: event, p_props: props ?? {} });
+}
+
+export function setMemberRole(spaceId, userId, role) {
+  return rpc("set_member_role", { p_space_id: spaceId, p_user_id: userId, p_role: role });
+}
+
+export function createInvite(spaceId, role, days) {
+  return rpc("create_invite", { p_space_id: spaceId, p_role: role, p_days: days });
+}
+
+export function peekInvite(token) {
+  return rpc("peek_invite", { p_token: token });
+}
+
+export function redeemInvite(token) {
+  return rpc("redeem_invite", { p_token: token });
+}
+
+export function revokeInvites(spaceId) {
+  return rpc("revoke_invites", { p_space_id: spaceId });
+}
+
+export function describeSpace(spaceId, description) {
+  return rpc("describe_space", { p_space_id: spaceId, p_description: description });
 }

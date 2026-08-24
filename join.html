@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>팀 초대 · 붙박스</title>
+    <meta name="robots" content="noindex" />
+    <link rel="icon" href="icons/icon-32.png" />
+    <link rel="stylesheet" href="web/site.css" />
+  </head>
+  <body>
+    <div class="app">
+      <section class="view view--center" data-view="loading">
+        <div class="spinner"></div>
+        <p class="muted">초대를 확인하는 중…</p>
+      </section>
+
+      <section class="view view--center" data-view="signin" hidden>
+        <div class="brand">
+          <img src="icons/icon-48.png" alt="" width="48" height="48" />
+          <h1 class="brand__name">붙박스</h1>
+        </div>
+        <p class="view__title" id="invite-space">팀에 초대받았습니다</p>
+        <p class="view__desc" id="invite-detail"></p>
+        <button class="btn btn--primary btn--large" type="button" id="btn-join">Google로 로그인하고 참여</button>
+        <a class="linkback" href="index.html">붙박스가 뭔가요?</a>
+      </section>
+
+      <section class="view view--center" data-view="failed" hidden>
+        <h1 class="view__title">참여하지 못했습니다</h1>
+        <p class="view__desc" id="invite-error"></p>
+        <a class="btn btn--primary" href="index.html">붙박스 홈으로</a>
+      </section>
+    </div>
+
+    <div id="toast" role="status" aria-live="polite"></div>
+
+    <script type="module" src="web/join.js"></script>
+  </body>
+</html>

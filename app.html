@@ -82,10 +82,12 @@
               />
               <button class="search__clear" type="button" id="btn-search-clear" hidden>지우기</button>
             </div>
-            <span class="counter" id="meter-boxes">0 / 10</span>
+            <button class="counter" type="button" id="meter-boxes" title="요금제 보기">0 / 10</button>
           </div>
           <div class="meter"><span class="meter__fill" id="meter-fill"></span></div>
         </div>
+
+        <div class="tagbar" id="tag-filter" hidden></div>
 
         <main class="boxes" id="box-list"></main>
 
@@ -94,6 +96,10 @@
           <p class="empty__desc">
             자주 쓰는 계좌번호나 안내 문구처럼, 늘 같은 자리에 두고 싶은 것부터 담아 보세요.
           </p>
+          <div class="empty__actions">
+            <button class="btn btn--primary" type="button" id="btn-first-box">첫 박스 만들기</button>
+            <button class="btn" type="button" id="btn-starter">예시 3개로 시작</button>
+          </div>
         </div>
 
         <div class="empty" id="box-nomatch" hidden>

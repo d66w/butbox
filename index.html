@@ -3,16 +3,16 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>붙박스 — 이름표 붙은 고정 자리</title>
+    <title>붙박스 — 자주 쓰는 문구 저장하고 바로 꺼내 쓰기</title>
     <meta
       name="description"
-      content="자주 쓰는 문구를 이름표 붙은 박스에 넣어두고, 팀원이 다른 기기에서 그대로 복사해 갑니다."
+      content="매일 복붙하는 문구를 한 번 저장하고 검색해서 바로 복사하거나 입력창에 넣습니다. 고객센터·영업팀을 위한 팀 문구 관리 도구."
     />
     <meta property="og:type" content="website" />
-    <meta property="og:title" content="붙박스 — 이름표 붙은 고정 자리" />
+    <meta property="og:title" content="붙박스 — 매일 복붙하는 문구, 이제 찾지 마세요" />
     <meta
       property="og:description"
-      content="자주 쓰는 문구를 이름표 붙은 박스에 넣어두고, 팀원이 다른 기기에서 그대로 복사해 갑니다."
+      content="매일 복붙하는 문구를 한 번 저장하고 검색해서 바로 복사하거나 입력창에 넣습니다. 고객센터·영업팀을 위한 팀 문구 관리 도구."
     />
     <meta property="og:image" content="icons/icon-128.png" />
     <meta name="twitter:card" content="summary" />
@@ -29,6 +29,7 @@
         <nav class="site-nav">
           <a href="#examples">왜 쓰나요</a>
           <a href="#how">어떻게 쓰나요</a>
+          <a href="#pricing">가격</a>
           <a href="#faq">자주 묻는 질문</a>
         </nav>
         <button class="btn btn--primary" type="button" data-cta="signin">Google로 시작하기</button>
@@ -37,17 +38,17 @@
 
     <main>
       <section class="hero">
-        <span class="hero__eyebrow">반복 붙여넣기가 많은 팀을 위한 도구</span>
-        <h1 class="hero__title">카톡에 던지면 파묻힙니다.<br /><em>붙박스는 항상 같은 자리에 있습니다.</em></h1>
+        <span class="hero__eyebrow">고객센터·영업팀을 위한 문구 관리 도구</span>
+        <h1 class="hero__title">매일 복붙하는 문구,<br /><em>이제 찾지 마세요.</em></h1>
         <p class="hero__desc">
-          회사 계좌, 반품 안내 문구, 회의실 예약 링크처럼 매일 다시 찾는 것들을 이름표 붙은 박스에 넣어두세요.
-          같은 스페이스에 속한 팀원이 다른 기기에서 바로 복사해 갑니다.
+          붙박스에 한 번 저장하면 팀원 누구나 같은 자리에서 바로 복사하고 사용할 수 있습니다.
+          찾고, 클릭하고, 끝.
         </p>
         <div class="hero__actions">
           <button class="btn btn--primary btn--large" type="button" data-cta="signin">Google로 시작하기</button>
           <a class="btn btn--large" href="#how">어떻게 쓰나요</a>
         </div>
-        <p class="hero__note">무료로 시작 · 설치 없이 브라우저에서 바로 사용</p>
+        <p class="hero__note">무료로 시작 · 카드 등록 없음 · 브라우저에서 바로 사용</p>
 
         <div class="showcase">
           <div class="showcase__frame">
@@ -151,19 +152,57 @@
         </div>
       </section>
 
-      <section class="section section--alt" id="plan">
+      <section class="section section--alt" id="pricing">
         <div class="section__head">
-          <h2 class="section__title">무료로 어디까지 되나요</h2>
-          <p class="section__desc">지금은 무료 플랜만 있습니다. 결제 수단을 등록할 곳이 없습니다.</p>
+          <h2 class="section__title">가격</h2>
+          <p class="section__desc">지금은 Free만 실제로 쓸 수 있습니다. Pro와 Team은 출시 준비 중입니다.</p>
         </div>
-        <div class="plan-grid">
-          <div class="plan-item"><strong>박스 10개</strong><span>이름표 붙은 자리 10칸</span></div>
-          <div class="plan-item"><strong>스페이스 1개</strong><span>내가 만드는 팀 공간</span></div>
-          <div class="plan-item"><strong>참여 무제한</strong><span>남의 스페이스에는 몇 개든</span></div>
-          <div class="plan-item"><strong>인원 무제한</strong><span>한 스페이스에 몇 명이든</span></div>
-          <div class="plan-item"><strong>영구 보관</strong><span>텍스트는 만료되지 않음</span></div>
-          <div class="plan-item"><strong>실시간 동기화</strong><span>팀원 화면에 바로 반영</span></div>
+        <div class="pricing">
+          <article class="tier tier--current">
+            <p class="tier__name">Free</p>
+            <p class="tier__price">0원</p>
+            <p class="tier__note">지금 바로 사용 가능</p>
+            <ul class="tier__list">
+              <li>박스 10개</li>
+              <li>개인 스페이스 1개</li>
+              <li>팀원 3명까지</li>
+              <li>검색 · 태그 · 즐겨찾기</li>
+              <li>복사 · 입력창 삽입</li>
+            </ul>
+            <button class="btn btn--primary btn--block" type="button" data-cta="signin">무료로 시작하기</button>
+          </article>
+
+          <article class="tier">
+            <p class="tier__name">Pro</p>
+            <p class="tier__price">4,900<span>원 / 월</span></p>
+            <p class="tier__note">연 49,000원 · 2개월 무료</p>
+            <ul class="tier__list">
+              <li>박스 300개</li>
+              <li>개인 스페이스 5개</li>
+              <li>팀원 5명까지</li>
+              <li>템플릿 변수 무제한</li>
+              <li>최근 사용 · 고급 정렬</li>
+            </ul>
+            <button class="btn btn--block" type="button" data-waitlist="pro">출시 알림 받기</button>
+          </article>
+
+          <article class="tier">
+            <p class="tier__name">Team</p>
+            <p class="tier__price">12,900<span>원 / 월</span></p>
+            <p class="tier__note">연 129,000원 · 팀원 수와 무관</p>
+            <ul class="tier__list">
+              <li>박스 1,000개</li>
+              <li>스페이스 20개</li>
+              <li>팀원 200명까지</li>
+              <li>관리자 권한 · 초대 링크</li>
+              <li>팀 사용량 확인</li>
+            </ul>
+            <button class="btn btn--block" type="button" data-waitlist="team">출시 알림 받기</button>
+          </article>
         </div>
+        <p class="gate-note">
+          결제는 아직 열려 있지 않습니다. 결제창을 만들어 두고 받지 않는 대신, 관심을 남겨 주시면 열릴 때 먼저 알려 드립니다.
+        </p>
       </section>
 
       <section class="section" id="faq">
