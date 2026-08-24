@@ -67,39 +67,40 @@ function modalRoot() {
   return qs("#modal");
 }
 
-function closeModal(dialog) {
-  if (dialog.open) {
-    dialog.close();
-  }
-  clear(dialog);
-}
-
 function openModal(build) {
   const dialog = modalRoot();
   clear(dialog);
   return new Promise((resolve) => {
     let settled = false;
-    const finish = (value) => {
+
+    function finish(value) {
       if (settled) {
         return;
       }
       settled = true;
-      closeModal(dialog);
+      dialog.removeEventListener("cancel", onCancel);
+      dialog.removeEventListener("close", onClose);
+      if (dialog.open) {
+        dialog.close();
+      }
+      clear(dialog);
       resolve(value);
-    };
-    const onCancel = (event) => {
+    }
+
+    function onCancel(event) {
       event.preventDefault();
       finish(null);
-    };
-    dialog.addEventListener("cancel", onCancel, { once: true });
-    dialog.addEventListener(
-      "close",
-      () => {
-        dialog.removeEventListener("cancel", onCancel);
-        finish(null);
-      },
-      { once: true }
-    );
+    }
+
+    function onClose() {
+      if (dialog.open) {
+        return;
+      }
+      finish(null);
+    }
+
+    dialog.addEventListener("cancel", onCancel);
+    dialog.addEventListener("close", onClose);
     dialog.append(build(finish));
     dialog.showModal();
     const focusTarget = dialog.querySelector("[data-autofocus]");

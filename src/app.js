@@ -37,6 +37,7 @@ const state = {
   spaceId: null,
   boxes: [],
   members: [],
+  search: "",
   liveStatus: REALTIME_STATUS.idle
 };
 
@@ -119,6 +120,27 @@ function wireStaticHandlers() {
   qs("#btn-add-box").addEventListener("click", handleAddBox);
   qs("#btn-account").addEventListener("click", openAccountSheet);
 
+  const searchInput = qs("#box-search");
+  const searchClear = qs("#btn-search-clear");
+
+  searchInput.addEventListener("input", () => {
+    state.search = searchInput.value;
+    searchClear.hidden = searchInput.value.length === 0;
+    renderBoxes();
+  });
+
+  searchInput.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && searchInput.value.length > 0) {
+      event.preventDefault();
+      resetSearch();
+    }
+  });
+
+  searchClear.addEventListener("click", () => {
+    resetSearch();
+    searchInput.focus();
+  });
+
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) {
       realtime.suspend();
@@ -171,8 +193,18 @@ async function refreshSpaces() {
   renderSpaceHeader();
 }
 
+function resetSearch() {
+  const searchInput = qs("#box-search");
+  const searchClear = qs("#btn-search-clear");
+  searchInput.value = "";
+  state.search = "";
+  searchClear.hidden = true;
+  renderBoxes();
+}
+
 async function selectSpace(spaceId) {
   await flushAllPending();
+  resetSearch();
   state.spaceId = spaceId;
   for (const view of boxViews.values()) {
     clearTimeout(view.timer);
@@ -283,23 +315,25 @@ function renderSpaceHeader() {
 function renderMeter() {
   const space = currentSpace();
   const fill = qs("#meter-fill");
-  const boxLabel = qs("#meter-boxes");
-  const usageLabel = qs("#meter-usage");
+  const counter = qs("#meter-boxes");
 
   if (!space) {
     fill.style.width = "0%";
-    boxLabel.textContent = "박스 0 / 0";
-    usageLabel.textContent = "";
+    fill.dataset.level = "normal";
+    counter.textContent = "0 / 0";
+    counter.dataset.level = "normal";
     return;
   }
 
   const limit = Number(space.box_limit ?? 0);
   const count = Number(space.box_count ?? state.boxes.length);
   const ratio = usageRatio(count, limit);
+  const level = ratio >= 1 ? "full" : ratio >= 0.8 ? "high" : "normal";
   fill.style.width = `${Math.round(ratio * 100)}%`;
-  fill.dataset.level = ratio >= 1 ? "full" : ratio >= 0.8 ? "high" : "normal";
-  boxLabel.textContent = `박스 ${count} / ${limit}`;
-  usageLabel.textContent = `텍스트 ${formatBytes(space.used_bytes ?? 0)}`;
+  fill.dataset.level = level;
+  counter.textContent = `${count} / ${limit}`;
+  counter.dataset.level = level;
+  counter.title = `박스 ${count}개 · 최대 ${limit}개`;
 }
 
 function renderLiveDot() {
@@ -314,33 +348,58 @@ function renderLiveDot() {
   dot.title = labels[state.liveStatus] ?? "";
 }
 
+function matchesSearch(box, query) {
+  if (!query) {
+    return true;
+  }
+  const name = String(box.name ?? "").toLowerCase();
+  const body = String(box.text_content ?? "").toLowerCase();
+  return name.includes(query) || body.includes(query);
+}
+
 function renderBoxes() {
   const list = qs("#box-list");
   const empty = qs("#box-empty");
-  const seen = new Set();
-
-  state.boxes.forEach((box, index) => {
-    seen.add(box.id);
-    let view = boxViews.get(box.id);
-    if (!view) {
-      view = createBoxView(box);
-      boxViews.set(box.id, view);
-    }
-    updateBoxView(view, box);
-    if (list.children[index] !== view.root) {
-      list.insertBefore(view.root, list.children[index] ?? null);
-    }
-  });
+  const noMatch = qs("#box-nomatch");
+  const query = state.search.trim().toLowerCase();
+  const present = new Set(state.boxes.map((box) => box.id));
 
   for (const [id, view] of boxViews) {
-    if (!seen.has(id)) {
+    if (!present.has(id)) {
       clearTimeout(view.timer);
       view.root.remove();
       boxViews.delete(id);
     }
   }
 
+  for (const box of state.boxes) {
+    let view = boxViews.get(box.id);
+    if (!view) {
+      view = createBoxView(box);
+      boxViews.set(box.id, view);
+    }
+    updateBoxView(view, box);
+  }
+
+  const visible = state.boxes.filter((box) => matchesSearch(box, query));
+  const visibleIds = new Set(visible.map((box) => box.id));
+
+  for (const [id, view] of boxViews) {
+    if (!visibleIds.has(id) && view.root.parentNode) {
+      view.root.remove();
+    }
+  }
+
+  visible.forEach((box, index) => {
+    const view = boxViews.get(box.id);
+    if (list.children[index] !== view.root) {
+      list.insertBefore(view.root, list.children[index] ?? null);
+    }
+  });
+
+  list.hidden = visible.length === 0;
   empty.hidden = state.boxes.length > 0;
+  noMatch.hidden = state.boxes.length === 0 || visible.length > 0;
   renderMeter();
   renderAddButton();
 }
@@ -348,111 +407,58 @@ function renderBoxes() {
 function renderAddButton() {
   const space = currentSpace();
   const button = qs("#btn-add-box");
+  button.textContent = "박스 추가";
   if (!space) {
     button.disabled = true;
-    button.textContent = "박스 추가";
+    button.dataset.state = "ready";
+    button.title = "";
     return;
   }
   const atLimit = Number(space.box_count ?? state.boxes.length) >= Number(space.box_limit ?? 0);
   button.disabled = false;
-  button.textContent = atLimit ? "박스가 가득 찼습니다" : "박스 추가";
   button.dataset.state = atLimit ? "limit" : "ready";
+  button.title = atLimit ? "박스가 가득 찼습니다" : "";
 }
 
 function createBoxView(box) {
-  const nameEl = el("button", {
-    class: "box__name",
-    type: "button",
-    title: "이름 바꾸기",
-    onclick: () => renameBox(box.id)
-  });
+  const nameEl = el("span", { class: "box__name" });
+  const previewEl = el("span", { class: "box__preview" });
 
-  const badge = el("button", {
-    class: "box__badge",
-    type: "button",
-    hidden: true,
-    text: "팀원이 수정함 · 불러오기",
-    onclick: () => applyRemote(box.id)
-  });
-
-  const textarea = el("textarea", {
-    class: "box__text",
-    rows: 3,
-    spellcheck: false,
-    placeholder: "여기에 붙여넣으세요 (Ctrl+V)"
-  });
-
-  const statusEl = el("span", { class: "box__status" });
-  const sizeEl = el("span", { class: "box__size" });
+  const openButton = el(
+    "button",
+    {
+      class: "box__open",
+      type: "button",
+      onclick: () => openBoxEditor(box.id)
+    },
+    [nameEl, previewEl]
+  );
 
   const copyButton = el("button", {
-    class: "icon-btn icon-btn--copy",
+    class: "box__copy",
     type: "button",
     text: "복사",
     onclick: () => copyBox(box.id)
   });
 
-  const menuButton = el("button", {
-    class: "icon-btn",
-    type: "button",
-    title: "더보기",
-    text: "···",
-    onclick: () => openBoxMenu(box.id)
-  });
+  const root = el("article", { class: "box", dataset: { boxId: box.id } }, [openButton, copyButton]);
 
-  const root = el("article", { class: "box", dataset: { boxId: box.id } }, [
-    el("header", { class: "box__head" }, [
-      nameEl,
-      el("div", { class: "box__tools" }, [copyButton, menuButton])
-    ]),
-    textarea,
-    badge,
-    el("footer", { class: "box__foot" }, [statusEl, sizeEl])
-  ]);
-
-  const view = {
+  return {
     root,
     nameEl,
-    textarea,
-    statusEl,
-    sizeEl,
-    badge,
+    previewEl,
+    openButton,
     copyButton,
     timer: null,
     dirty: false,
     saving: false,
     resaveRequested: false,
     savedValue: box.text_content ?? "",
+    draft: box.text_content ?? "",
     remote: null,
+    editor: null,
     box
   };
-
-  textarea.addEventListener("input", () => {
-    view.dirty = true;
-    updateSizeLabel(view);
-    setStatus(view, "저장 대기");
-    clearTimeout(view.timer);
-    view.timer = setTimeout(() => saveBox(box.id), AUTOSAVE_DELAY_MS);
-  });
-
-  textarea.addEventListener("paste", (event) => {
-    const pasted = readPastedText(event);
-    if (pasted && pasted.kind !== "text") {
-      event.preventDefault();
-      showToast("지금은 텍스트만 담을 수 있습니다. 파일과 이미지는 다음 단계입니다.", "info");
-      return;
-    }
-    setTimeout(() => {
-      clearTimeout(view.timer);
-      saveBox(box.id);
-    }, 0);
-  });
-
-  textarea.addEventListener("blur", () => {
-    flushPending(box.id);
-  });
-
-  return view;
 }
 
 function updateBoxView(view, box) {
@@ -461,44 +467,63 @@ function updateBoxView(view, box) {
   if (view.nameEl.textContent !== label) {
     view.nameEl.textContent = label;
   }
-  view.textarea.readOnly = Boolean(box.locked);
+  view.openButton.title = box.name;
   view.root.dataset.locked = box.locked ? "true" : "false";
 
   const serverValue = box.text_content ?? "";
-  const focused = document.activeElement === view.textarea;
+  const editing = Boolean(view.editor) && document.activeElement === view.editor.textarea;
 
-  if (serverValue === view.textarea.value) {
+  if (serverValue === view.draft) {
     view.savedValue = serverValue;
     view.dirty = false;
     view.remote = null;
-    view.badge.hidden = true;
-  } else if (view.dirty || focused) {
+  } else if (view.dirty || editing) {
     if (serverValue !== view.savedValue) {
       view.remote = serverValue;
-      view.badge.hidden = false;
     }
   } else {
-    view.textarea.value = serverValue;
+    view.draft = serverValue;
     view.savedValue = serverValue;
     view.remote = null;
-    view.badge.hidden = true;
+    if (view.editor) {
+      view.editor.textarea.value = serverValue;
+    }
   }
 
-  updateSizeLabel(view);
-  updateFootStatus(view, box);
+  renderPreview(view);
+  refreshEditor(view);
 }
 
-function updateFootStatus(view, box) {
-  if (view.dirty) {
-    return;
+function renderPreview(view) {
+  const preview = previewText(view.draft, 90);
+  if (preview) {
+    view.previewEl.textContent = preview;
+    view.previewEl.dataset.empty = "false";
+  } else {
+    view.previewEl.textContent = "비어 있음";
+    view.previewEl.dataset.empty = "true";
   }
+}
+
+function describeBox(box) {
   const who = memberName(box.updated_by);
   const when = box.updated_at ? formatRelativeTime(box.updated_at) : "";
   if (!when) {
-    setStatus(view, "비어 있음");
+    return "비어 있음";
+  }
+  return who ? `${when} · ${who}` : when;
+}
+
+function refreshEditor(view) {
+  if (!view.editor) {
     return;
   }
-  setStatus(view, who ? `${when} · ${who}` : when);
+  view.editor.textarea.readOnly = Boolean(view.box.locked);
+  view.editor.badge.hidden = view.remote === null;
+  updateSizeLabel(view);
+  if (!view.dirty && !view.saving) {
+    setStatus(view, describeBox(view.box));
+  }
 }
 
 function memberName(userId) {
@@ -516,13 +541,113 @@ function memberName(userId) {
 }
 
 function setStatus(view, text) {
-  view.statusEl.textContent = text;
+  if (view.editor) {
+    view.editor.statusEl.textContent = text;
+  }
 }
 
 function updateSizeLabel(view) {
-  const size = byteLength(view.textarea.value);
-  view.sizeEl.textContent = `${formatBytes(size)} / ${formatBytes(TEXT_MAX_BYTES)}`;
-  view.sizeEl.dataset.over = size > TEXT_MAX_BYTES ? "true" : "false";
+  if (!view.editor) {
+    return;
+  }
+  const size = byteLength(view.draft);
+  view.editor.sizeEl.textContent = `${formatBytes(size)} / ${formatBytes(TEXT_MAX_BYTES)}`;
+  view.editor.sizeEl.dataset.over = size > TEXT_MAX_BYTES ? "true" : "false";
+}
+
+async function openBoxEditor(boxId) {
+  const view = boxViews.get(boxId);
+  if (!view) {
+    return;
+  }
+
+  await openSheet({
+    title: view.box.name,
+    build: (body, close) => {
+      const textarea = el("textarea", {
+        class: "editor__text",
+        spellcheck: false,
+        placeholder: "여기에 붙여넣으세요 (Ctrl+V)",
+        value: view.draft,
+        dataset: { autofocus: "true" }
+      });
+
+      const statusEl = el("span", { class: "editor__status" });
+      const sizeEl = el("span", { class: "editor__size" });
+      const badge = el("button", {
+        class: "editor__badge",
+        type: "button",
+        hidden: true,
+        text: "팀원이 수정함 · 불러오기",
+        onclick: () => applyRemote(boxId)
+      });
+
+      view.editor = { textarea, statusEl, sizeEl, badge };
+
+      const absorb = () => {
+        view.draft = textarea.value;
+        view.dirty = view.draft !== view.savedValue;
+        renderPreview(view);
+        updateSizeLabel(view);
+      };
+
+      textarea.addEventListener("input", () => {
+        absorb();
+        setStatus(view, "저장 대기");
+        clearTimeout(view.timer);
+        view.timer = setTimeout(() => saveBox(boxId), AUTOSAVE_DELAY_MS);
+      });
+
+      textarea.addEventListener("paste", (event) => {
+        const pasted = readPastedText(event);
+        if (pasted && pasted.kind !== "text") {
+          event.preventDefault();
+          showToast("지금은 텍스트만 담을 수 있습니다. 파일과 이미지는 다음 단계입니다.", "info");
+          return;
+        }
+        setTimeout(() => {
+          absorb();
+          clearTimeout(view.timer);
+          saveBox(boxId);
+        }, 0);
+      });
+
+      textarea.addEventListener("blur", () => {
+        absorb();
+        flushPending(boxId);
+      });
+
+      body.append(
+        el("div", { class: "editor" }, [
+          textarea,
+          badge,
+          el("div", { class: "editor__meta" }, [statusEl, sizeEl])
+        ]),
+        el("div", { class: "editor__actions" }, [
+          el("button", {
+            class: "btn btn--primary",
+            type: "button",
+            text: "복사",
+            onclick: () => copyBox(boxId)
+          }),
+          el("button", {
+            class: "btn",
+            type: "button",
+            text: "더보기",
+            onclick: async () => {
+              close(null);
+              await openBoxMenu(boxId);
+            }
+          })
+        ])
+      );
+
+      refreshEditor(view);
+    }
+  });
+
+  view.editor = null;
+  flushPending(boxId);
 }
 
 function flushPending(boxId) {
@@ -562,10 +687,10 @@ async function runSave(boxId) {
     return;
   }
 
-  const value = view.textarea.value;
+  const value = view.draft;
   if (value === view.savedValue) {
     view.dirty = false;
-    updateFootStatus(view, view.box);
+    refreshEditor(view);
     return;
   }
 
@@ -579,14 +704,16 @@ async function runSave(boxId) {
   view.saving = true;
   view.resaveRequested = false;
   let succeeded = false;
-  setStatus(view, "저장 중…");
+  setStatus(view, "저장 중");
   try {
     const rows = await api.saveBoxText(boxId, value);
     const saved = Array.isArray(rows) ? rows[0] : null;
     view.savedValue = value;
-    view.dirty = view.textarea.value !== value;
+    view.dirty = view.draft !== value;
     view.remote = null;
-    view.badge.hidden = true;
+    if (view.editor) {
+      view.editor.badge.hidden = true;
+    }
     if (saved) {
       const index = state.boxes.findIndex((box) => box.id === boxId);
       if (index !== -1) {
@@ -595,6 +722,7 @@ async function runSave(boxId) {
       }
     }
     setStatus(view, "저장됨");
+    renderPreview(view);
     bumpSpaceCounts();
     succeeded = true;
   } catch (error) {
@@ -604,7 +732,7 @@ async function runSave(boxId) {
     view.saving = false;
   }
 
-  const wantsResave = view.resaveRequested || view.textarea.value !== view.savedValue;
+  const wantsResave = view.resaveRequested || view.draft !== view.savedValue;
   view.resaveRequested = false;
   if (succeeded && wantsResave && boxViews.has(boxId)) {
     await runSave(boxId);
@@ -616,13 +744,16 @@ function applyRemote(boxId) {
   if (!view || view.remote === null) {
     return;
   }
-  view.textarea.value = view.remote;
+  view.draft = view.remote;
   view.savedValue = view.remote;
   view.remote = null;
   view.dirty = false;
-  view.badge.hidden = true;
-  updateSizeLabel(view);
-  updateFootStatus(view, view.box);
+  if (view.editor) {
+    view.editor.textarea.value = view.draft;
+    view.editor.badge.hidden = true;
+  }
+  renderPreview(view);
+  refreshEditor(view);
   showToast("팀원이 저장한 내용을 불러왔습니다.", "success");
 }
 
@@ -631,18 +762,21 @@ function copyBox(boxId) {
   if (!view) {
     return;
   }
-  const loader = view.dirty ? () => view.textarea.value : () => api.fetchBoxText(boxId);
+  const loader = view.dirty ? () => view.draft : () => api.fetchBoxText(boxId);
   copyTextFrom(loader)
     .then((text) => {
       if (!text) {
         showToast("이 박스는 비어 있습니다.", "info");
         return;
       }
-      const busy = view.dirty || view.saving || document.activeElement === view.textarea;
-      if (!busy && text !== view.textarea.value) {
-        view.textarea.value = text;
+      const busy = view.dirty || view.saving;
+      if (!busy && text !== view.draft) {
+        view.draft = text;
         view.savedValue = text;
-        updateSizeLabel(view);
+        renderPreview(view);
+        if (view.editor) {
+          view.editor.textarea.value = text;
+        }
       }
       showToast(`복사했습니다 · ${previewText(text, 24)}`, "success");
     })
@@ -736,8 +870,9 @@ async function openBoxMenu(boxId) {
     if (!view) {
       return;
     }
-    view.textarea.value = "";
-    view.dirty = true;
+    view.draft = "";
+    view.dirty = view.savedValue !== "";
+    renderPreview(view);
     clearTimeout(view.timer);
     await saveBox(boxId);
     return;

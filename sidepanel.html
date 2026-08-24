@@ -10,7 +10,7 @@
     <div class="app">
       <section class="view view--center" data-view="loading">
         <div class="spinner"></div>
-        <p class="muted">불러오는 중…</p>
+        <p class="muted">불러오는 중</p>
       </section>
 
       <section class="view view--center" data-view="setup" hidden>
@@ -32,15 +32,13 @@
 
       <section class="view view--center" data-view="signin" hidden>
         <div class="brand">
-          <img src="icons/icon-48.png" alt="" width="48" height="48" />
+          <img src="icons/icon-48.png" alt="" width="40" height="40" />
           <h1 class="brand__name">붙박스</h1>
         </div>
         <p class="view__desc">
           자주 쓰는 문구를 이름표 붙은 박스에 넣어두고, 어느 기기에서든 그 자리에서 꺼내 씁니다.
         </p>
-        <button class="btn btn--primary btn--block" type="button" id="btn-signin">
-          Google로 시작하기
-        </button>
+        <button class="btn btn--primary" type="button" id="btn-signin">Google로 시작하기</button>
         <p class="view__note">로그인하면 “내 공간”이 자동으로 만들어집니다.</p>
       </section>
 
@@ -52,31 +50,44 @@
           </button>
           <div class="topbar__tools">
             <span class="live" id="live-dot" data-status="idle"></span>
-            <button class="icon-btn" type="button" id="btn-space-settings" title="스페이스 설정">
-              설정
-            </button>
+            <button class="iconbtn" type="button" id="btn-space-settings">설정</button>
           </div>
         </header>
 
-        <div class="meter">
-          <div class="meter__track"><span class="meter__fill" id="meter-fill"></span></div>
-          <div class="meter__labels">
-            <span id="meter-boxes">박스 0 / 10</span>
-            <span id="meter-usage"></span>
+        <div class="toolbar">
+          <div class="search">
+            <svg class="search__icon" viewBox="0 0 16 16" aria-hidden="true">
+              <circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" stroke-width="1.4" />
+              <line x1="10.4" y1="10.4" x2="14" y2="14" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
+            </svg>
+            <input
+              class="search__input"
+              type="text"
+              id="box-search"
+              placeholder="박스 검색"
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <button class="search__clear" type="button" id="btn-search-clear" hidden>지우기</button>
           </div>
+          <span class="counter" id="meter-boxes">0 / 10</span>
         </div>
+        <div class="meter"><span class="meter__fill" id="meter-fill"></span></div>
 
         <main class="boxes" id="box-list"></main>
 
         <div class="empty" id="box-empty" hidden>
           <p class="empty__title">아직 박스가 없습니다</p>
-          <p class="empty__desc">
-            자주 쓰는 계좌번호나 안내 문구처럼, 늘 같은 자리에 두고 싶은 것부터 담아 보세요.
-          </p>
+          <p class="empty__desc">늘 같은 자리에 두고 싶은 것부터 담아 보세요.</p>
+        </div>
+
+        <div class="empty" id="box-nomatch" hidden>
+          <p class="empty__title">찾는 박스가 없습니다</p>
+          <p class="empty__desc">다른 말로 검색해 보세요.</p>
         </div>
 
         <footer class="bottombar">
-          <button class="btn btn--primary btn--block" type="button" id="btn-add-box">박스 추가</button>
+          <button class="btn btn--primary" type="button" id="btn-add-box">박스 추가</button>
           <button class="linkbtn" type="button" id="btn-account"><span id="account-email"></span></button>
         </footer>
       </section>
