@@ -1,5 +1,6 @@
 import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { join, extname, dirname, posix } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -58,6 +59,22 @@ for (const permission of ["sidePanel", "storage", "identity", "clipboardWrite"])
   }
 }
 
+function extensionIdFromKey(key) {
+  const der = Buffer.from(String(key), "base64");
+  const hash = createHash("sha256").update(der).digest("hex").slice(0, 32);
+  return [...hash].map((c) => String.fromCharCode(parseInt(c, 16) + 97)).join("");
+}
+
+let extensionId = null;
+if (!manifest.key) {
+  fail("manifest.json에 key가 없습니다. 개발자마다 확장 ID가 달라져 OAuth 콜백이 깨집니다.");
+} else {
+  extensionId = extensionIdFromKey(manifest.key);
+  if (!/^[a-p]{32}$/.test(extensionId)) {
+    fail("manifest.json의 key에서 올바른 확장 ID를 도출하지 못했습니다.");
+  }
+}
+
 const csp = manifest.content_security_policy?.extension_pages ?? "";
 if (!csp.includes("wss://*.supabase.co")) {
   fail("CSP의 connect-src에 wss://*.supabase.co가 없습니다. 실시간 연결이 막힙니다.");
@@ -108,6 +125,12 @@ for (const needle of [
   }
 }
 
+const authSource = read("src/auth.js");
+const sidepanel = read("sidepanel.html");
+if (!authSource.includes("AUTH_REDIRECT_MISCONFIGURED") || !sidepanel.includes("signin-redirect-url")) {
+  fail("확장 OAuth 콜백 설정 오류 안내가 빠져 있습니다.");
+}
+
 for (const table of ["box_user_state", "analytics_events", "subscriptions", "invitations", "box_list"]) {
   if (!schema.includes(`revoke all on public.${table} from anon, authenticated;`)) {
     fail(`schema.sql에서 ${table}의 anon 권한 회수를 확인하지 못했습니다.`);
@@ -116,6 +139,39 @@ for (const table of ["box_user_state", "analytics_events", "subscriptions", "inv
 
 if (/service_role|SUPABASE_SERVICE_ROLE/.test(schema)) {
   fail("schema.sql에 service_role 참조가 있습니다.");
+}
+
+for (const needle of [
+  "box_limit = 50, space_limit = 3, member_limit = null",
+  "box_limit = 100, space_limit = 10, member_limit = null",
+  "v_token := encode(gen_random_bytes(18), 'hex')",
+  "item.key in ('surface', 'lever', 'plan', 'count', 'role', 'mode', 'reason')"
+]) {
+  if (!schema.includes(needle)) {
+    fail(`확정 정책 또는 보안 규칙이 없습니다: ${needle}`);
+  }
+}
+if (schema.includes("MEMBER_LIMIT_REACHED")) {
+  fail("참여 무제한 정책과 충돌하는 MEMBER_LIMIT_REACHED가 남아 있습니다.");
+}
+
+const landing = read("index.html");
+for (const forbidden of ["팀원 3명까지", "박스 300개", "박스 1,000개", "4,900원", "12,900원"]) {
+  if (landing.includes(forbidden)) {
+    fail(`랜딩에 미확정 또는 폐기된 요금제 문구가 남아 있습니다: ${forbidden}`);
+  }
+}
+
+const insertFeature = read("src/features/insert.js");
+if (!insertFeature.includes("permissionForUrl") || !insertFeature.includes("chrome.permissions.request(permission)")) {
+  fail("삽입 권한을 현재 사이트 origin 단위로 요청하지 않습니다.");
+}
+
+if (!existsSync(join(root, ".github/workflows/check.yml"))) {
+  fail("GitHub Actions 검사 워크플로가 없습니다.");
+}
+if (!existsSync(join(root, "supabase/migrations/003-policy-alignment.sql"))) {
+  fail("기존 DB 교정용 003-policy-alignment.sql이 없습니다.");
 }
 
 const manifestPermissions = manifest.permissions ?? [];
@@ -184,5 +240,6 @@ if (problems.length > 0) {
 
 console.log(`검사 통과 · 파일 ${allFiles.length}개`);
 console.log(`확장 이름 ${manifest.name} · 버전 ${manifest.version}`);
-console.log("확장 리디렉션 주소: chrome://extensions에서 확장 ID 확인 후 https://<ID>.chromiumapp.org/supabase-auth 로 등록");
+console.log(`확장 ID(고정) ${extensionId}`);
+console.log(`확장 리디렉션 주소: https://${extensionId}.chromiumapp.org/supabase-auth 로 등록`);
 console.log("웹 리디렉션 주소: https://<도메인>/auth/callback.html 로 등록");

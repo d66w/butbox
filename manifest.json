@@ -1,5 +1,6 @@
 {
   "manifest_version": 3,
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArdWqoXhPkDp+Rz55lP7XoigiLQTq8HxJgB8jQCQjjnnHLjzvNuiYhMtmTbhPBA7/URW4kYSRYAfuZtWEK0dhSXuvte/JEF8FhI46wdqn8jThtZwva13G33zZYifaNOa81ttvlJai1BmdcMdwUUY+Ckpn+5fiBV8WC1wfnfbyU25S5HK+O0MpB9FvDs8bYiEzLs3h4KxqI4VCq9YIli8oZYJ4Kj1uFEBIgrdZeCScRZdvYHFnJYNmdAXaz503telFU9wtekvCYXYbVyOikO0/Xmz0GsoXPTCFAjWYDWMoJVXV6Q0bQh4qLXMmXBOArJ1xBMt1RSHt2Ld0qB4omh3onQIDAQAB",
   "name": "붙박스",
   "short_name": "붙박스",
   "description": "매일 반복해서 입력하는 문구를 저장하고, 검색해서 바로 복사하거나 입력창에 넣습니다.",
