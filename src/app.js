@@ -658,24 +658,17 @@ function createBoxView(box) {
   const previewEl = el("span", { class: "box__preview" });
   const tagsEl = el("span", { class: "box__tags" });
 
-  const openButton = el(
-    "button",
-    {
-      class: "box__open",
-      type: "button",
-      onclick: () => openBoxEditor(box.id)
-    },
-    [nameEl, previewEl, tagsEl]
-  );
-
-  const copyButton = el("button", {
+  const editButton = el("button", {
     class: "box__act",
     type: "button",
-    text: "복사",
-    onclick: () => copyBox(box.id, "card")
+    text: "수정",
+    onclick: (event) => {
+      event.stopPropagation();
+      openBoxEditor(box.id);
+    }
   });
 
-  const actions = el("div", { class: "box__acts" }, [copyButton]);
+  const actions = el("div", { class: "box__acts" }, [editButton]);
 
   let insertButton = null;
   if (state.insertAvailable) {
@@ -683,15 +676,35 @@ function createBoxView(box) {
       class: "box__act box__act--ghost",
       type: "button",
       text: "삽입",
-      onclick: () => insertBox(box.id, "card")
+      onclick: (event) => {
+        event.stopPropagation();
+        insertBox(box.id, "card");
+      }
     });
     actions.append(insertButton);
   }
 
-  const root = el("article", { class: "box", dataset: { boxId: box.id, active: "false" } }, [
-    el("div", { class: "box__top" }, [openButton, starEl]),
-    actions
-  ]);
+  const root = el(
+    "article",
+    {
+      class: "box",
+      dataset: { boxId: box.id, active: "false" },
+      onclick: () => copyBox(box.id, "card"),
+      onkeydown: (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          copyBox(box.id, "card");
+        }
+      }
+    },
+    [
+      el("div", { class: "box__head" }, [nameEl, starEl]),
+      previewEl,
+      el("div", { class: "box__foot" }, [tagsEl, actions])
+    ]
+  );
+  root.setAttribute("role", "button");
+  root.setAttribute("tabindex", "0");
 
   return {
     root,
@@ -699,8 +712,7 @@ function createBoxView(box) {
     nameEl,
     previewEl,
     tagsEl,
-    openButton,
-    copyButton,
+    editButton,
     insertButton,
     timer: null,
     dirty: false,
@@ -720,7 +732,8 @@ function updateBoxView(view, box) {
   if (view.nameEl.textContent !== label) {
     view.nameEl.textContent = label;
   }
-  view.openButton.title = box.name;
+  view.root.setAttribute("aria-label", `${box.name} 눌러서 복사`);
+  view.root.title = "눌러서 복사 · 수정은 오른쪽 버튼";
   view.root.dataset.locked = box.locked ? "true" : "false";
   view.root.dataset.template = hasVariables(box.text_content) ? "true" : "false";
 
