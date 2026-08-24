@@ -548,13 +548,13 @@ grant execute on function public.peek_invite(text) to authenticated;
 grant execute on function public.redeem_invite(text) to authenticated;
 grant execute on function public.revoke_invites(uuid) to authenticated;
 
-create or replace view public.space_summaries
+drop view if exists public.space_summaries;
+create view public.space_summaries
 with (security_invoker = true)
 as
 select
   s.id,
   s.name,
-  s.description,
   s.space_code,
   s.owner_id,
   s.box_limit,
@@ -566,7 +566,8 @@ select
   (select count(*) from public.boxes b where b.space_id = s.id) as box_count,
   (select count(*) from public.space_members mm where mm.space_id = s.id) as member_count,
   s.created_at,
-  s.updated_at
+  s.updated_at,
+  s.description
 from public.spaces s
 join public.space_members m on m.space_id = s.id and m.user_id = auth.uid();
 
