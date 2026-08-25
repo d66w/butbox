@@ -725,6 +725,31 @@ code,
   font-size: 11px;
 }
 
+.auth-help {
+  width: min(100%, 420px);
+  margin-top: var(--s3);
+  padding: var(--s3);
+  border: 1px solid var(--line);
+  border-radius: var(--r2);
+  text-align: left;
+}
+
+.auth-help summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.auth-help p {
+  margin: var(--s2) 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.auth-help .code-row {
+  margin-top: var(--s2);
+}
+
 #toast {
   position: fixed;
   left: var(--s4);

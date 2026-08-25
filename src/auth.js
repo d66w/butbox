@@ -158,6 +158,17 @@ function authorizeUrl(challenge) {
   return `${CONFIG.supabaseUrl}/auth/v1/authorize?${params.toString()}`;
 }
 
+export function authFlowError(error) {
+  const reason = String(error?.message ?? error);
+  if (/Authorization page could not be loaded|Did not redirect to the right URL/i.test(reason)) {
+    return new AppError("AUTH_REDIRECT_MISCONFIGURED", undefined, error);
+  }
+  if (/canceled|closed/i.test(reason)) {
+    return new AppError("NOT_AUTHENTICATED", "로그인을 취소했습니다.", error);
+  }
+  return new AppError("NOT_AUTHENTICATED", `로그인 창을 열지 못했습니다. (${reason})`, error);
+}
+
 async function signInViaExtensionPopup() {
   const verifier = createVerifier();
   const challenge = await createChallenge(verifier);
@@ -171,11 +182,7 @@ async function signInViaExtensionPopup() {
     });
   } catch (error) {
     await removeLocal(STORAGE_KEYS.pkceVerifier);
-    const reason = String(error?.message ?? error);
-    if (reason.includes("canceled") || reason.includes("closed")) {
-      throw new AppError("NOT_AUTHENTICATED", "로그인을 취소했습니다.");
-    }
-    throw new AppError("NOT_AUTHENTICATED", `로그인 창을 열지 못했습니다. (${reason})`, error);
+    throw authFlowError(error);
   }
 
   if (!resultUrl) {

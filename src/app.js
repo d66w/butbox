@@ -100,7 +100,9 @@ function reportError(error) {
 }
 
 async function boot() {
-  qs("#redirect-url").textContent = redirectUrl();
+  const authRedirectUrl = redirectUrl();
+  qs("#redirect-url").textContent = authRedirectUrl;
+  qs("#signin-redirect-url").textContent = authRedirectUrl;
   wireStaticHandlers();
 
   if (!isConfigured()) {
@@ -132,7 +134,7 @@ async function consumeWaitlist() {
   }
   window.sessionStorage.removeItem("butbox.waitlist");
   await offerUpgrade(UPGRADE_LEVERS.boxLimit, {
-    title: `${plan === "team" ? "Team" : "Pro"} 대기 명단`,
+    title: "Pro 대기 명단",
     message: "결제가 열리면 가장 먼저 알려 드립니다."
   });
 }
@@ -183,11 +185,13 @@ async function consumePendingCapture() {
 }
 
 function wireStaticHandlers() {
-  qs("#btn-copy-redirect").addEventListener("click", () => {
-    copyTextFrom(() => redirectUrl())
-      .then(() => showToast("리디렉션 주소를 복사했습니다.", "success"))
-      .catch((error) => reportError(error));
-  });
+  for (const selector of ["#btn-copy-redirect", "#btn-copy-signin-redirect"]) {
+    qs(selector).addEventListener("click", () => {
+      copyTextFrom(() => redirectUrl())
+        .then(() => showToast("로그인 콜백 주소를 복사했습니다.", "success"))
+        .catch((error) => reportError(error));
+    });
+  }
 
   qs("#btn-signin").addEventListener("click", async (event) => {
     const button = event.currentTarget;
@@ -200,6 +204,11 @@ function wireStaticHandlers() {
         await loadWorkspace();
       }
     } catch (error) {
+      if (error?.code === "AUTH_REDIRECT_MISCONFIGURED") {
+        const help = qs("#auth-help");
+        help.hidden = false;
+        help.open = true;
+      }
       showToast(errorMessage(error), "error");
     }
     button.disabled = false;
@@ -1831,7 +1840,7 @@ async function openAccountSheet() {
     title: state.profile?.email ?? "계정",
     description: `${planLabel} 플랜 · 스페이스 ${state.spaces.length}개`,
     options: [
-      { value: "plan", label: "요금제 보기", description: "무료 한도와 Pro/Team 비교" },
+      { value: "plan", label: "요금제 보기", description: "무료 한도와 Pro 준비안 비교" },
       { value: "sort", label: `정렬 · ${sortLabel(state.sortMode)}`, description: "내 순서 / 최근 사용 / 이름" },
       state.insertAvailable && !state.insertPermission
         ? { value: "grant", label: "삽입 권한 허용", description: "입력창에 바로 넣으려면 필요합니다." }
@@ -1971,7 +1980,7 @@ function boxLimitCopy() {
   const pro = planByCode("pro");
   const limit = space ? space.box_limit : 10;
   const message = pro
-    ? `박스 ${limit}개를 모두 쓰고 있습니다.\nPro에서는 ${pro.box_limit}개까지 저장할 수 있습니다. (월 ${formatWon(pro.price_monthly_krw)})`
+    ? `박스 ${limit}개를 모두 쓰고 있습니다.\nPro 준비안은 ${pro.box_limit}개입니다. 가격은 검증 후 확정합니다.`
     : `박스 ${limit}개를 모두 쓰고 있습니다.`;
   return { title: "박스가 가득 찼습니다", message };
 }
@@ -2163,17 +2172,23 @@ async function createStarterBoxes() {
 }
 
 function renderPlanRow(plan, current) {
+  const price = plan.code === "free"
+    ? "무료"
+    : plan.price_monthly_krw > 0
+      ? `월 ${formatWon(plan.price_monthly_krw)}`
+      : "가격 미정";
+  const members = plan.member_limit == null ? "참여 무제한" : `멤버 ${plan.member_limit}명`;
   return el("div", { class: "plan", dataset: { current: current ? "true" : "false" } }, [
     el("div", { class: "plan__head" }, [
       el("strong", { class: "plan__name", text: plan.label }),
       el("span", {
         class: "plan__price",
-        text: plan.price_monthly_krw > 0 ? `월 ${formatWon(plan.price_monthly_krw)}` : "무료"
+        text: price
       })
     ]),
     el("span", {
       class: "plan__detail",
-      text: `박스 ${plan.box_limit}개 · 스페이스 ${plan.space_limit}개 · 멤버 ${plan.member_limit}명`
+      text: `박스 ${plan.box_limit}개 · 스페이스 ${plan.space_limit}개 · ${members}`
     })
   ]);
 }
@@ -2183,7 +2198,7 @@ async function openPlanSheet() {
   await openSheet({
     title: "요금제",
     build: (body) => {
-      for (const plan of state.plans) {
+      for (const plan of state.plans.filter((item) => item.code !== "team" || current === "team")) {
         body.append(renderPlanRow(plan, plan.code === current));
       }
       body.append(

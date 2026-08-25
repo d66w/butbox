@@ -40,6 +40,14 @@
         </p>
         <button class="btn btn--primary" type="button" id="btn-signin">Google로 시작하기</button>
         <p class="view__note">로그인하면 “내 공간”이 자동으로 만들어집니다.</p>
+        <details class="auth-help" id="auth-help" hidden>
+          <summary>로그인 연결 설정 확인</summary>
+          <p>아래 주소를 Supabase → Authentication → URL Configuration → Redirect URLs에 추가한 뒤 다시 로그인하세요.</p>
+          <div class="code-row">
+            <code id="signin-redirect-url"></code>
+            <button class="btn btn--tiny" type="button" id="btn-copy-signin-redirect">복사</button>
+          </div>
+        </details>
       </section>
 
       <section class="view view--main" data-view="main" hidden>

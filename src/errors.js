@@ -17,6 +17,7 @@ const MESSAGES = {
   BOX_LOCKED: "읽기 전용 박스입니다. 복사는 되지만 덮어쓸 수 없습니다.",
   SPACE_QUOTA_EXCEEDED: "스페이스 용량이 가득 찼습니다.",
   SESSION_EXPIRED: "로그인이 만료됐습니다. 다시 로그인해 주세요.",
+  AUTH_REDIRECT_MISCONFIGURED: "Supabase에 이 확장의 로그인 콜백 주소를 등록해야 합니다.",
   NETWORK: "서버에 연결하지 못했습니다. 네트워크를 확인해 주세요.",
   CLIPBOARD: "클립보드에 쓰지 못했습니다. 패널을 한 번 클릭한 뒤 다시 눌러 주세요."
 };

@@ -1,5 +1,3 @@
-const HOST_PERMISSION = { origins: ["http://*/*", "https://*/*"] };
-
 const BLOCKED_PREFIXES = [
   "chrome://",
   "chrome-extension://",
@@ -25,21 +23,43 @@ export function isInsertableUrl(url) {
   if (value.length === 0) {
     return false;
   }
-  return !BLOCKED_PREFIXES.some((prefix) => value.startsWith(prefix));
+  return Boolean(permissionForUrl(value)) && !BLOCKED_PREFIXES.some((prefix) => value.startsWith(prefix));
 }
 
-export function hasPermission() {
-  if (!isSupported()) {
-    return Promise.resolve(false);
+export function permissionForUrl(url) {
+  try {
+    const parsed = new URL(String(url ?? ""));
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+      return null;
+    }
+    return { origins: [`${parsed.origin}/*`] };
+  } catch {
+    return null;
   }
-  return chrome.permissions.contains(HOST_PERMISSION).catch(() => false);
 }
 
-export function requestPermission() {
+export async function hasPermission(url) {
   if (!isSupported()) {
-    return Promise.resolve(false);
+    return false;
   }
-  return chrome.permissions.request(HOST_PERMISSION).catch(() => false);
+  const tab = url ? null : await activeTab();
+  const permission = permissionForUrl(url ?? tab?.url);
+  if (!permission) {
+    return false;
+  }
+  return chrome.permissions.contains(permission).catch(() => false);
+}
+
+export async function requestPermission(url) {
+  if (!isSupported()) {
+    return false;
+  }
+  const tab = url ? null : await activeTab();
+  const permission = permissionForUrl(url ?? tab?.url);
+  if (!permission) {
+    return false;
+  }
+  return chrome.permissions.request(permission).catch(() => false);
 }
 
 async function activeTab() {
@@ -119,7 +139,7 @@ export async function insertIntoActiveTab(text) {
   if (!isInsertableUrl(tab.url)) {
     return { ok: false, reason: "BLOCKED_PAGE" };
   }
-  if (!(await hasPermission())) {
+  if (!(await hasPermission(tab.url))) {
     return { ok: false, reason: "NO_PERMISSION" };
   }
 

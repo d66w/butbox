@@ -791,25 +791,34 @@ alter table public.boxes add column if not exists tags text[] not null default '
 
 create index if not exists boxes_tags_idx on public.boxes using gin (tags);
 
-alter table public.plans add column if not exists member_limit integer not null default 3;
+alter table public.plans add column if not exists member_limit integer;
+alter table public.plans alter column member_limit drop not null;
 alter table public.plans add column if not exists price_monthly_krw integer not null default 0;
 alter table public.plans add column if not exists price_yearly_krw integer not null default 0;
 alter table public.plans add column if not exists tag_limit integer not null default 5;
 
 update public.plans set
-  box_limit = 10, space_limit = 1, member_limit = 3, tag_limit = 3,
+  box_limit = 10, space_limit = 1, member_limit = null, tag_limit = 3,
   price_monthly_krw = 0, price_yearly_krw = 0
 where code = 'free';
 
 update public.plans set
-  box_limit = 300, space_limit = 5, member_limit = 5, tag_limit = 12,
-  price_monthly_krw = 4900, price_yearly_krw = 49000
+  box_limit = 50, space_limit = 3, member_limit = null, tag_limit = 12,
+  price_monthly_krw = 0, price_yearly_krw = 0
 where code = 'pro';
 
 update public.plans set
-  box_limit = 1000, space_limit = 20, member_limit = 200, tag_limit = 30,
-  price_monthly_krw = 12900, price_yearly_krw = 129000
+  box_limit = 100, space_limit = 10, member_limit = null, tag_limit = 30,
+  price_monthly_krw = 0, price_yearly_krw = 0
 where code = 'team';
+
+update public.spaces s
+set box_limit = p.box_limit + pr.extra_boxes,
+    quota_bytes = p.quota_bytes,
+    updated_at = now()
+from public.profiles pr
+join public.plans p on p.code = pr.plan
+where s.owner_id = pr.id;
 
 alter table public.space_members drop constraint if exists space_members_role_check;
 alter table public.space_members add constraint space_members_role_check
@@ -1103,12 +1112,21 @@ set search_path = public
 as $$
 declare
   v_user uuid := auth.uid();
+  v_props jsonb;
 begin
   if v_user is null then
     return;
   end if;
+  select coalesce(jsonb_object_agg(item.key, item.value), '{}'::jsonb)
+  into v_props
+  from jsonb_each(coalesce(p_props, '{}'::jsonb)) item
+  where item.key in ('surface', 'lever', 'plan', 'count', 'role', 'mode', 'reason')
+    and (
+      jsonb_typeof(item.value) in ('number', 'boolean')
+      or (jsonb_typeof(item.value) = 'string' and char_length(item.value #>> '{}') <= 32)
+    );
   insert into public.analytics_events (user_id, event, props)
-  values (v_user, p_event, coalesce(p_props, '{}'::jsonb));
+  values (v_user, p_event, v_props);
 exception
   when check_violation then
     return;
@@ -1155,10 +1173,9 @@ create or replace function public.create_invite(p_space_id uuid, p_role text, p_
 returns text
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 declare
-  alphabet constant text := 'abcdefghijkmnpqrstuvwxyz23456789';
   v_actor_role text;
   v_token text;
   v_days integer := least(greatest(coalesce(p_days, 7), 1), 30);
@@ -1178,10 +1195,7 @@ begin
   end if;
 
   loop
-    v_token := '';
-    for i in 1..22 loop
-      v_token := v_token || substr(alphabet, 1 + floor(random() * length(alphabet))::integer, 1);
-    end loop;
+    v_token := encode(gen_random_bytes(18), 'hex');
     exit when not exists (select 1 from public.invitations where token = v_token);
     attempts := attempts + 1;
     if attempts > 30 then
@@ -1227,9 +1241,6 @@ as $$
 declare
   v_user uuid := auth.uid();
   v_inv public.invitations;
-  v_owner uuid;
-  v_limit integer;
-  v_members integer;
 begin
   if v_user is null then
     raise exception 'NOT_AUTHENTICATED';
@@ -1249,13 +1260,6 @@ begin
 
   if exists (select 1 from public.space_members where space_id = v_inv.space_id and user_id = v_user) then
     return v_inv.space_id;
-  end if;
-
-  select owner_id into v_owner from public.spaces where id = v_inv.space_id;
-  select member_limit into v_limit from public.effective_plan(v_owner);
-  select count(*) into v_members from public.space_members where space_id = v_inv.space_id;
-  if v_members >= coalesce(v_limit, 3) then
-    raise exception 'MEMBER_LIMIT_REACHED';
   end if;
 
   insert into public.space_members (space_id, user_id, role)
@@ -1321,6 +1325,18 @@ grant select on public.box_list to authenticated;
 
 revoke all on function public.sync_profile_plan() from public, anon, authenticated;
 revoke all on function public.normalize_tags(text[], integer) from public, anon, authenticated;
+revoke all on function public.effective_plan(uuid) from public, anon, authenticated;
+revoke all on function public.current_subscription() from public, anon, authenticated;
+revoke all on function public.set_box_favorite(uuid, boolean) from public, anon, authenticated;
+revoke all on function public.touch_box(uuid) from public, anon, authenticated;
+revoke all on function public.set_box_tags(uuid, text[]) from public, anon, authenticated;
+revoke all on function public.duplicate_box(uuid) from public, anon, authenticated;
+revoke all on function public.log_event(text, jsonb) from public, anon, authenticated;
+revoke all on function public.set_member_role(uuid, uuid, text) from public, anon, authenticated;
+revoke all on function public.create_invite(uuid, text, integer) from public, anon, authenticated;
+revoke all on function public.peek_invite(text) from public, anon, authenticated;
+revoke all on function public.redeem_invite(text) from public, anon, authenticated;
+revoke all on function public.revoke_invites(uuid) from public, anon, authenticated;
 
 grant execute on function public.effective_plan(uuid) to authenticated;
 grant execute on function public.current_subscription() to authenticated;
@@ -1383,6 +1399,7 @@ begin
 end;
 $$;
 
+revoke all on function public.describe_space(uuid, text) from public, anon, authenticated;
 grant execute on function public.describe_space(uuid, text) to authenticated;
 
 insert into public.subscriptions (user_id)
