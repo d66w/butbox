@@ -68,6 +68,11 @@ test("box text validation uses the 10KB byte budget", () => {
   const tooBig = validateBoxText("a".repeat(TEXT_MAX_BYTES + 1));
   assert.equal(tooBig.ok, false);
   assert.match(tooBig.message, /10KB/);
+  assert.match(tooBig.message, /1B 줄여/, "한도와 현재값이 같은 문자열로 반올림되면 이유를 알 수 없습니다.");
+  assert.match(
+    validateBoxText("a".repeat(TEXT_MAX_BYTES + 760)).message,
+    /760B 줄여/
+  );
   assert.equal(validateBoxText("가".repeat(3414)).ok, false);
 });
 

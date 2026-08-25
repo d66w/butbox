@@ -139,7 +139,7 @@ export function validateBoxText(text) {
     return {
       ok: false,
       size,
-      message: `한 박스에는 ${formatBytes(TEXT_MAX_BYTES)}까지 담을 수 있습니다. 지금 ${formatBytes(size)}입니다.`
+      message: `한 박스에는 ${formatBytes(TEXT_MAX_BYTES)}까지 담을 수 있습니다. ${formatBytes(size - TEXT_MAX_BYTES)} 줄여 주세요.`
     };
   }
   return { ok: true, size };

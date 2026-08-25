@@ -207,6 +207,25 @@ for (const path of jsFiles) {
   }
 }
 
+const RELEASE_BLOCKERS = [
+  { needle: "YOUR_DOMAIN", where: ["config.js"] },
+  { needle: "YOUR_PROJECT_REF", where: ["config.js"] },
+  { needle: "YOUR_SUPABASE_ANON_KEY", where: ["config.js"] },
+  { needle: "[운영자]", where: ["PRIVACY.md", "privacy.html"] },
+  { needle: "[이메일]", where: ["PRIVACY.md", "privacy.html"] },
+  { needle: "[프로젝트 리전]", where: ["PRIVACY.md", "privacy.html"] },
+  { needle: "[사업자 정보]", where: ["PRIVACY.md", "privacy.html"] }
+];
+
+const releaseGaps = [];
+for (const blocker of RELEASE_BLOCKERS) {
+  for (const target of blocker.where) {
+    if (existsSync(join(root, target)) && read(target).includes(blocker.needle)) {
+      releaseGaps.push(`${target}: ${blocker.needle}`);
+    }
+  }
+}
+
 const commentRules = [
   { test: (path) => /\.(js|mjs)$/.test(path), pattern: /^\s*(\/\/|\/\*|\*\s|\*\/)/ },
   { test: (path) => path.endsWith(".css"), pattern: /^\s*(\/\*|\*\/)/ },
@@ -239,6 +258,14 @@ if (problems.length > 0) {
 }
 
 console.log(`검사 통과 · 파일 ${allFiles.length}개`);
+if (releaseGaps.length > 0) {
+  console.log("");
+  console.log(`출시 전 채워야 할 자리 ${releaseGaps.length}건 (개발 중에는 정상):`);
+  for (const gap of releaseGaps) {
+    console.log(` - ${gap}`);
+  }
+  console.log("");
+}
 console.log(`확장 이름 ${manifest.name} · 버전 ${manifest.version}`);
 console.log(`확장 ID(고정) ${extensionId}`);
 console.log(`확장 리디렉션 주소: https://${extensionId}.chromiumapp.org/supabase-auth 로 등록`);

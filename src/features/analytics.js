@@ -22,7 +22,7 @@ const SAFE_KEYS = new Set(["surface", "lever", "plan", "count", "role", "mode", 
 
 let lastSearchAt = 0;
 
-function sanitize(props) {
+export function sanitize(props) {
   const out = {};
   for (const [key, value] of Object.entries(props ?? {})) {
     if (!SAFE_KEYS.has(key)) {
@@ -51,6 +51,14 @@ export function track(event, props) {
     lastSearchAt = now;
   }
   api.logEvent(event, sanitize(props)).catch(() => {});
+}
+
+export function isAllowedEvent(event) {
+  return ALLOWED.has(event);
+}
+
+export function isSafeKey(key) {
+  return SAFE_KEYS.has(key);
 }
 
 export const TRACKED_EVENTS = [...ALLOWED];
