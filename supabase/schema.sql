@@ -180,6 +180,19 @@ as $$
   );
 $$;
 
+create or replace function public.space_join_enabled(p_space_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from public.spaces s
+    where s.id = p_space_id and s.password_hash is not null
+  );
+$$;
+
 create or replace function public.generate_space_code()
 returns text
 language plpgsql
@@ -656,7 +669,7 @@ select
   s.box_limit,
   s.quota_bytes,
   s.used_bytes,
-  (s.password_hash is not null) as join_enabled,
+  public.space_join_enabled(s.id) as join_enabled,
   m.role,
   m.joined_at,
   (select count(*) from public.boxes b where b.space_id = s.id) as box_count,
@@ -737,9 +750,12 @@ revoke all on public.space_member_list from anon, authenticated;
 grant usage on schema public to authenticated;
 grant select on public.plans to authenticated;
 grant select on public.profiles to authenticated;
-grant select on public.spaces to authenticated;
+grant select (
+  id, name, space_code, owner_id, box_limit, quota_bytes, used_bytes, created_at, updated_at
+) on public.spaces to authenticated;
 grant select on public.space_members to authenticated;
-grant select, update, delete on public.boxes to authenticated;
+grant select, delete on public.boxes to authenticated;
+grant update (name, text_content) on public.boxes to authenticated;
 grant select, insert on public.upgrade_intents to authenticated;
 grant select on public.space_summaries to authenticated;
 grant select on public.space_member_list to authenticated;
@@ -752,8 +768,11 @@ revoke all on function public.boxes_sync_usage() from public, anon, authenticate
 revoke all on function public.enforce_box_limit() from public, anon, authenticated;
 revoke all on function public.touch_updated_at() from public, anon, authenticated;
 
+revoke all on function public.space_join_enabled(uuid) from public, anon, authenticated;
+
 grant execute on function public.is_space_member(uuid) to authenticated;
 grant execute on function public.is_space_owner(uuid) to authenticated;
+grant execute on function public.space_join_enabled(uuid) to authenticated;
 grant execute on function public.shares_space_with(uuid) to authenticated;
 grant execute on function public.current_profile() to authenticated;
 grant execute on function public.create_space(text) to authenticated;
@@ -1338,7 +1357,6 @@ revoke all on function public.peek_invite(text) from public, anon, authenticated
 revoke all on function public.redeem_invite(text) from public, anon, authenticated;
 revoke all on function public.revoke_invites(uuid) from public, anon, authenticated;
 
-grant execute on function public.effective_plan(uuid) to authenticated;
 grant execute on function public.current_subscription() to authenticated;
 grant execute on function public.set_box_favorite(uuid, boolean) to authenticated;
 grant execute on function public.touch_box(uuid) to authenticated;
@@ -1363,7 +1381,7 @@ select
   s.box_limit,
   s.quota_bytes,
   s.used_bytes,
-  (s.password_hash is not null) as join_enabled,
+  public.space_join_enabled(s.id) as join_enabled,
   m.role,
   m.joined_at,
   (select count(*) from public.boxes b where b.space_id = s.id) as box_count,
@@ -1376,6 +1394,7 @@ join public.space_members m on m.space_id = s.id and m.user_id = auth.uid();
 
 revoke all on public.space_summaries from anon, authenticated;
 grant select on public.space_summaries to authenticated;
+grant select (description) on public.spaces to authenticated;
 
 create or replace function public.describe_space(p_space_id uuid, p_description text)
 returns void

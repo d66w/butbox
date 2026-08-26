@@ -3,10 +3,13 @@
 > 기준: 현재 `main` 브랜치 코드 리뷰 결과
 > 목적: Chrome Web Store 베타 출시 전 검증 및 출시 준비
 >
-> **2026-08-25 검증 갱신** — 코드/테스트로 확인 가능한 항목을 실제로 실행해 표시했습니다.
+> **2026-08-26 검증 갱신** — 코드/테스트로 확인 가능한 항목을 실제로 실행해 표시했습니다.
 > `[x]` = 실제로 실행해 통과 · `[ ]` = 사람이 실제 환경에서 해야 함
-> 검증 방법: 목 Supabase + 목 chrome API 위에서 확장을 구동하고 각 기능을 눌러 확인.
-> 화면 증거: `RELEASE_STATUS.md` 참고.
+> 검증 방법: 목 Supabase + 목 chrome API 위에서 확장을 구동, 웹 화면은 실제 브라우저에서 구동.
+> 상세와 이번에 찾은 버그: `RELEASE_STATUS.md` 참고.
+>
+> ⚠️ 이 갱신에서 **웹 앱이 부팅되지 않는 버그**와 **오류 메시지가 영문 코드로 노출되는 버그**를 찾아 고쳤습니다.
+> 이전 판에서 `[x]`로 표시돼 있던 §8의 "이해 가능한 메시지" 항목은 실제로는 깨져 있었습니다.
 
 ---
 
@@ -34,7 +37,8 @@
 
 ### 1-3. 실제 도메인 설정
 - [ ] `config.js`의 `webOrigin`을 실제 도메인으로 변경
-- [ ] `YOUR_DOMAIN` 등 placeholder가 코드 전체에 남아 있지 않은지 확인
+- [x] `YOUR_DOMAIN` 등 placeholder 검사 자동화 — `npm run check:release`가 배포물에 남아 있으면 **실패**시킵니다. CI는 `v*` 태그와 수동 실행에서 이 게이트를 돌립니다
+- [x] `webOrigin`이 실제 도메인이 아니면 깨진 초대 링크를 만들지 않고 안내하도록 수정
 - [ ] Supabase Site URL 설정
 - [ ] Supabase Redirect URL 설정
 - [ ] 웹 OAuth callback 실제 도메인에서 테스트
@@ -188,15 +192,25 @@ Google 계정 A와 B 두 개를 사용해서 테스트한다.
 
 실제 계정 A/B를 이용해 테스트한다.
 
-- [ ] A가 B의 개인 Space를 조회할 수 없는지
-- [ ] A가 B의 박스를 직접 조회할 수 없는지
-- [ ] A가 B의 박스를 수정할 수 없는지
-- [ ] A가 B의 박스를 삭제할 수 없는지
-- [ ] member가 owner/admin 전용 RPC를 악용할 수 없는지
-- [ ] anon 사용자가 보호된 데이터를 조회할 수 없는지
-- [ ] 초대 토큰을 임의로 조작할 수 없는지
-- [x] 클라이언트에서 service_role key가 노출되지 않는지
+> **침투 테스트 SQL을 만들어 두었습니다**: [`supabase/rls-penetration.sql`](supabase/rls-penetration.sql)
+> 아래 항목 전부를 실제 역할로 전환해 시도하고 PASS/FAIL 표를 냅니다. 끝에 `rollback` 하므로 데이터를 바꾸지 않습니다.
+> **실행은 사람이 해야 합니다.** 파일 맨 위 `v_attacker` / `v_victim`에 실제 UUID 두 개를 넣으세요.
+
+- [ ] A가 B의 개인 Space를 조회할 수 없는지 *(SQL 준비됨, 실행 대기)*
+- [ ] A가 B의 박스를 직접 조회할 수 없는지 *(SQL 준비됨, 실행 대기)*
+- [ ] A가 B의 박스를 수정할 수 없는지 *(SQL 준비됨, 실행 대기)*
+- [ ] A가 B의 박스를 삭제할 수 없는지 *(SQL 준비됨, 실행 대기)*
+- [ ] member가 owner/admin 전용 RPC를 악용할 수 없는지 *(SQL 준비됨, 실행 대기)*
+- [ ] anon 사용자가 보호된 데이터를 조회할 수 없는지 *(SQL 준비됨, 실행 대기)*
+- [ ] 초대 토큰을 임의로 조작할 수 없는지 *(SQL 준비됨, 실행 대기)*
+- [x] 클라이언트에서 service_role key가 노출되지 않는지 — 테스트로도 확인
 - [x] 민감한 Supabase DB 권한이 anon/authenticated에 과도하게 열려 있지 않은지
+
+### 이번 점검에서 찾은 권한 구멍 (수정 완료, 운영 DB 적용 대기)
+- [x] 같은 스페이스 멤버가 `spaces.password_hash`를 읽을 수 있던 문제 — 컬럼 단위 권한으로 차단
+- [x] 멤버가 PATCH로 `boxes.tags`를 직접 써서 플랜 태그 한도를 우회하던 문제 — `update (name, text_content)`로 축소
+- [x] `effective_plan(uuid)`로 남의 플랜을 조회할 수 있던 문제 — `authenticated`에서 회수
+- [ ] **`supabase/migrations/004-column-grants.sql`을 운영 DB에서 실행** ← 사람이 해야 함
 
 ---
 
@@ -225,25 +239,22 @@ Google 계정 A와 B 두 개를 사용해서 테스트한다.
 - [ ] API timeout
 - [ ] 페이지 새로고침 중 저장
 - [ ] 저장 중 브라우저 종료
-- [x] 오류 발생 시 사용자에게 이해 가능한 메시지 표시
+- [x] 오류 발생 시 사용자에게 이해 가능한 메시지 표시 — **이전 판에서 잘못 표시돼 있었고 이번에 실제로 고쳤습니다.** 서버가 던진 `WRONG_PASSWORD` 같은 코드와 Postgres 제약 위반 문구가 토스트에 그대로 뜨던 문제. 회귀 테스트 4개 추가
+- [x] 세션 만료 시 토큰을 한 번 갱신하고 같은 요청을 재시도 — `tests/api.test.js`
+- [x] 갱신도 실패하면 세션을 지우고 로그인 화면으로 — `tests/api.test.js`
 
 ---
 
 # 🟡 9. 자동 테스트 강화
 
-현재 단위 테스트:
-- format
-- search
-- store
-- templates
+현재 단위 테스트 **95개** (`analytics` `api` `auth` `clipboard` `errors` `format` `insert` `manifest` `realtime` `search` `sorting` `store` `templates`).
 
-추가 권장:
-
-- [x] 인증 흐름 테스트
-- [ ] API 함수 테스트
-- [ ] Space 권한 테스트
-- [ ] 초대 로직 테스트
-- [ ] Realtime 이벤트 테스트
+- [x] 인증 흐름 테스트 — `tests/auth.test.js`
+- [x] **API 함수 테스트** — `tests/api.test.js` 11개. 헤더·토큰 갱신 재시도·id 인코딩·오류 변환·204 처리
+- [x] Realtime 이벤트 테스트 — `tests/realtime.test.js`. 파싱, 재연결 backoff, suspend/resume
+- [x] 오류 메시지 회귀 테스트 — `tests/errors.test.js`. 영문 코드가 사용자에게 새지 않는지
+- [ ] Space 권한 테스트 — RLS/RPC 영역이라 `supabase/rls-penetration.sql`로 대체. 실행 대기
+- [ ] 초대 로직 테스트 — 전량 SQL(plpgsql)에 있어 단위 테스트로 덮이지 않음. 위 SQL로 대체
 - [ ] 박스 CRUD 통합 테스트
 - [ ] 템플릿 + 복사 통합 테스트
 - [ ] 템플릿 + 삽입 통합 테스트
@@ -259,7 +270,14 @@ Google 계정 A와 B 두 개를 사용해서 테스트한다.
 
 ```bash
 npm run check
+```
+
+```bash
 npm test
+```
+
+```bash
+npm run check:release
 ```
 
 확인할 것:
@@ -274,7 +292,12 @@ npm test
 - [x] Supabase schema 필수 구문 정상
 - [x] RLS 활성화 확인
 - [x] anon 권한 회수 확인
-- [x] placeholder 문자열 검색
+- [x] 컬럼 단위 권한 확인 (테이블 전체 열기 금지)
+- [x] `grant all ... to anon/authenticated` 금지
+- [x] placeholder 문자열 검색 — **출시 모드에서는 실패로 처리**
+- [x] `sidepanel.html`과 `app.html`의 id 집합 대조
+- [x] 어떤 JS도 HTML 문자열을 주입하지 않음
+- [x] SQL 전체가 실제 Postgres 파서로 파싱됨 (pglast)
 
 ---
 

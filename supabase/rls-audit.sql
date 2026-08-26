@@ -12,13 +12,30 @@ from information_schema.role_table_grants
 where table_schema = 'public'
   and grantee = 'anon';
 
-select 'authenticated에 쓰기 권한이 열린 테이블' as check_name,
+select 'authenticated에 예상 밖 쓰기 권한' as check_name,
        coalesce(string_agg(distinct table_name || ':' || privilege_type, ', '), '없음 (통과)') as result
 from information_schema.role_table_grants
 where table_schema = 'public'
   and grantee = 'authenticated'
   and privilege_type in ('INSERT', 'UPDATE', 'DELETE')
-  and table_name not in ('boxes', 'profiles', 'upgrade_intents');
+  and (table_name, privilege_type) not in (('boxes', 'DELETE'), ('upgrade_intents', 'INSERT'));
+
+select 'boxes에 열린 컬럼 단위 UPDATE' as check_name,
+       coalesce(string_agg(distinct column_name, ', '), '없음 (실패: 저장이 막힙니다)') as result
+from information_schema.column_privileges
+where table_schema = 'public'
+  and table_name = 'boxes'
+  and grantee = 'authenticated'
+  and privilege_type = 'UPDATE';
+
+select 'spaces.password_hash 읽기 권한' as check_name,
+       case when count(*) = 0 then '없음 (통과)' else '실패: ' || string_agg(grantee, ', ') end as result
+from information_schema.column_privileges
+where table_schema = 'public'
+  and table_name = 'spaces'
+  and column_name = 'password_hash'
+  and grantee in ('anon', 'authenticated')
+  and privilege_type = 'SELECT';
 
 select 'RLS는 켜졌지만 정책이 없는 테이블' as check_name,
        coalesce(string_agg(c.relname, ', '), '없음 (통과)') as result

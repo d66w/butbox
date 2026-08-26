@@ -19,8 +19,40 @@ const MESSAGES = {
   SESSION_EXPIRED: "로그인이 만료됐습니다. 다시 로그인해 주세요.",
   AUTH_REDIRECT_MISCONFIGURED: "Supabase에 이 확장의 로그인 콜백 주소를 등록해야 합니다.",
   NETWORK: "서버에 연결하지 못했습니다. 네트워크를 확인해 주세요.",
-  CLIPBOARD: "클립보드에 쓰지 못했습니다. 패널을 한 번 클릭한 뒤 다시 눌러 주세요."
+  CLIPBOARD: "클립보드에 쓰지 못했습니다. 패널을 한 번 클릭한 뒤 다시 눌러 주세요.",
+  NOT_SPACE_ADMIN: "스페이스를 관리할 수 있는 사람만 할 수 있습니다.",
+  INVITE_NOT_FOUND: "초대를 찾을 수 없습니다. 링크를 다시 확인해 주세요.",
+  INVITE_EXPIRED: "이 초대 링크는 만료됐습니다. 새 링크를 요청하세요.",
+  INVITE_EXHAUSTED: "이 초대 링크는 사용 횟수를 다 썼습니다. 새 링크를 요청하세요.",
+  INVITE_TOKEN_EXHAUSTED: "초대 링크를 만들지 못했습니다. 잠시 뒤 다시 시도해 주세요.",
+  CANNOT_CHANGE_OWN_ROLE: "자기 권한은 바꿀 수 없습니다.",
+  CANNOT_CHANGE_OWNER_ROLE: "만든 사람의 권한은 바꿀 수 없습니다.",
+  INVALID_ROLE: "쓸 수 없는 권한입니다.",
+  INVALID_SPACE_DESCRIPTION: "스페이스 설명은 120자까지 쓸 수 있습니다.",
+  SPACE_NOT_CONFIGURED: "웹 주소가 아직 설정되지 않아 초대 링크를 만들 수 없습니다.",
+  REQUEST_FAILED: "요청을 처리하지 못했습니다. 잠시 뒤 다시 시도해 주세요."
 };
+
+const HANGUL = /[가-힣]/;
+
+function translate(raw) {
+  const text = String(raw ?? "");
+  for (const [code, message] of Object.entries(MESSAGES)) {
+    if (text.includes(code)) {
+      return message;
+    }
+  }
+  if (text.includes("Failed to fetch") || text.includes("NetworkError")) {
+    return MESSAGES.NETWORK;
+  }
+  if (/clipboard|not focused|NotAllowedError/i.test(text)) {
+    return MESSAGES.CLIPBOARD;
+  }
+  if (text.length === 0 || !HANGUL.test(text)) {
+    return MESSAGES.REQUEST_FAILED;
+  }
+  return text;
+}
 
 export class AppError extends Error {
   constructor(code, message, cause) {
@@ -35,22 +67,7 @@ export function errorMessage(error) {
   if (!error) {
     return "알 수 없는 오류가 생겼습니다.";
   }
-  if (error instanceof AppError) {
-    return error.message;
-  }
-  const raw = String(error.message ?? error);
-  for (const [code, message] of Object.entries(MESSAGES)) {
-    if (raw.includes(code)) {
-      return message;
-    }
-  }
-  if (raw.includes("Failed to fetch") || raw.includes("NetworkError")) {
-    return MESSAGES.NETWORK;
-  }
-  if (/clipboard|not focused|NotAllowedError/i.test(raw)) {
-    return MESSAGES.CLIPBOARD;
-  }
-  return raw;
+  return translate(error.message ?? error);
 }
 
 export function isAuthError(error) {

@@ -1,5 +1,7 @@
 import { TOAST_DURATION_MS } from "./constants.js";
 
+const HTML_SINK_PROPS = new Set(["innerHTML", "outerHTML", "srcdoc"]);
+
 export function qs(selector, root = document) {
   return root.querySelector(selector);
 }
@@ -14,14 +16,14 @@ export function el(tag, props = {}, children = []) {
       node.className = value;
     } else if (key === "text") {
       node.textContent = value;
-    } else if (key === "html") {
-      node.innerHTML = value;
     } else if (key.startsWith("on") && typeof value === "function") {
       node.addEventListener(key.slice(2).toLowerCase(), value);
     } else if (key === "dataset") {
       for (const [dataKey, dataValue] of Object.entries(value)) {
         node.dataset[dataKey] = dataValue;
       }
+    } else if (HTML_SINK_PROPS.has(key)) {
+      continue;
     } else if (key in node && key !== "list") {
       node[key] = value;
     } else {

@@ -145,11 +145,28 @@ for (const needle of [
   "box_limit = 50, space_limit = 3, member_limit = null",
   "box_limit = 100, space_limit = 10, member_limit = null",
   "v_token := encode(gen_random_bytes(18), 'hex')",
-  "item.key in ('surface', 'lever', 'plan', 'count', 'role', 'mode', 'reason')"
+  "item.key in ('surface', 'lever', 'plan', 'count', 'role', 'mode', 'reason')",
+  "grant update (name, text_content) on public.boxes to authenticated;",
+  "public.space_join_enabled(s.id) as join_enabled"
 ]) {
   if (!schema.includes(needle)) {
     fail(`확정 정책 또는 보안 규칙이 없습니다: ${needle}`);
   }
+}
+
+if (/grant select on public\.spaces to authenticated/.test(schema)) {
+  fail("schema.sql이 spaces 전체 컬럼에 select를 열어 password_hash가 노출됩니다.");
+}
+if (/grant\s+[^()\n;]*\bupdate\b[^()\n;]*on public\.boxes/i.test(schema)) {
+  fail("schema.sql이 boxes 전체 컬럼에 update를 열어 태그 한도를 우회할 수 있습니다.");
+}
+for (const match of schema.matchAll(/grant\s+all\b[^;]*?to\s+([^;]+);/gi)) {
+  if (/\b(anon|authenticated|public)\b/.test(match[1])) {
+    fail(`schema.sql이 grant all로 권한을 통째로 엽니다: ${match[0].split("\n")[0]}`);
+  }
+}
+if (/s\.password_hash is not null\) as join_enabled/.test(schema)) {
+  fail("space_summaries가 password_hash를 직접 읽습니다. space_join_enabled를 쓰세요.");
 }
 if (schema.includes("MEMBER_LIMIT_REACHED")) {
   fail("참여 무제한 정책과 충돌하는 MEMBER_LIMIT_REACHED가 남아 있습니다.");
@@ -172,6 +189,51 @@ if (!existsSync(join(root, ".github/workflows/check.yml"))) {
 }
 if (!existsSync(join(root, "supabase/migrations/003-policy-alignment.sql"))) {
   fail("기존 DB 교정용 003-policy-alignment.sql이 없습니다.");
+}
+if (!existsSync(join(root, "supabase/migrations/004-column-grants.sql"))) {
+  fail("컬럼 단위 권한 교정용 004-column-grants.sql이 없습니다.");
+}
+if (!existsSync(join(root, "supabase/rls-penetration.sql"))) {
+  fail("RLS 침투 테스트 SQL이 없습니다.");
+}
+
+function idsIn(path) {
+  return new Set([...read(path).matchAll(/id="([^"]+)"/g)].map((match) => match[1]));
+}
+
+const EXTENSION_ONLY_IDS = new Set(["auth-help", "signin-redirect-url", "btn-copy-signin-redirect"]);
+const panelIds = idsIn("sidepanel.html");
+const webIds = idsIn("app.html");
+
+for (const id of panelIds) {
+  if (!webIds.has(id) && !EXTENSION_ONLY_IDS.has(id)) {
+    fail(`sidepanel.html에만 있는 id입니다: ${id}. app.html에도 넣거나 src/app.js에서 없을 때를 처리하세요.`);
+  }
+}
+for (const id of webIds) {
+  if (!panelIds.has(id)) {
+    fail(`app.html에만 있는 id입니다: ${id}. sidepanel.html에도 넣으세요.`);
+  }
+}
+
+const appSource = read("src/app.js");
+for (const match of appSource.matchAll(/qs\("#([^"]+)"\)\s*\./g)) {
+  const id = match[1];
+  if (EXTENSION_ONLY_IDS.has(id)) {
+    fail(`src/app.js가 확장 전용 id를 확인 없이 씁니다: #${id}. app.html에는 없어서 웹 앱이 부팅에 실패합니다.`);
+  }
+}
+
+const uiSource = read("src/ui.js");
+if (/\.innerHTML\s*=|\.outerHTML\s*=|insertAdjacentHTML/.test(uiSource)) {
+  fail("src/ui.js가 HTML을 그대로 삽입합니다. textContent만 쓰세요.");
+}
+
+for (const path of jsFiles) {
+  const source = read(path);
+  if (/\.innerHTML\s*=|insertAdjacentHTML|document\.write\(/.test(source)) {
+    fail(`HTML을 문자열로 주입합니다: ${path}`);
+  }
 }
 
 const manifestPermissions = manifest.permissions ?? [];
@@ -207,22 +269,48 @@ for (const path of jsFiles) {
   }
 }
 
-const RELEASE_BLOCKERS = [
-  { needle: "YOUR_DOMAIN", where: ["config.js"] },
-  { needle: "YOUR_PROJECT_REF", where: ["config.js"] },
-  { needle: "YOUR_SUPABASE_ANON_KEY", where: ["config.js"] },
-  { needle: "[운영자]", where: ["PRIVACY.md", "privacy.html"] },
-  { needle: "[이메일]", where: ["PRIVACY.md", "privacy.html"] },
-  { needle: "[프로젝트 리전]", where: ["PRIVACY.md", "privacy.html"] },
-  { needle: "[사업자 정보]", where: ["PRIVACY.md", "privacy.html"] }
-];
+const SHIPPED_EXTRA = new Set(["manifest.json", "config.js", "PRIVACY.md"]);
+const SHIPPED_EXEMPT = new Set(["config.example.js"]);
+const SHIPPED_DIRS = ["src/", "web/", "auth/"];
+
+function isShipped(path) {
+  if (SHIPPED_EXEMPT.has(path)) {
+    return false;
+  }
+  if (path.startsWith("tests/") || path.startsWith("scripts/") || path.startsWith("supabase/")) {
+    return false;
+  }
+  if (SHIPPED_EXTRA.has(path)) {
+    return true;
+  }
+  if (path.endsWith(".md")) {
+    return false;
+  }
+  const inShippedDir = SHIPPED_DIRS.some((dir) => path.startsWith(dir));
+  const atRoot = !path.includes("/");
+  if (!inShippedDir && !atRoot) {
+    return false;
+  }
+  return /\.(html|js|css)$/.test(path);
+}
+
+const shippedFiles = allFiles.filter(isShipped);
+
+const BROAD_PLACEHOLDERS = ["YOUR_DOMAIN", "[운영자]", "[이메일]", "[프로젝트 리전]", "[사업자 정보]"];
+const CONFIG_PLACEHOLDERS = ["YOUR_PROJECT_REF", "YOUR_SUPABASE_ANON_KEY"];
 
 const releaseGaps = [];
-for (const blocker of RELEASE_BLOCKERS) {
-  for (const target of blocker.where) {
-    if (existsSync(join(root, target)) && read(target).includes(blocker.needle)) {
-      releaseGaps.push(`${target}: ${blocker.needle}`);
+for (const path of shippedFiles) {
+  const source = read(path);
+  for (const needle of BROAD_PLACEHOLDERS) {
+    if (source.includes(needle)) {
+      releaseGaps.push(`${path}: ${needle}`);
     }
+  }
+}
+for (const needle of CONFIG_PLACEHOLDERS) {
+  if (read("config.js").includes(needle)) {
+    releaseGaps.push(`config.js: ${needle}`);
   }
 }
 
@@ -249,6 +337,14 @@ for (const path of allFiles) {
   });
 }
 
+const releaseMode = process.argv.includes("--release") || process.env.BUTBOX_RELEASE === "1";
+
+if (releaseMode) {
+  for (const gap of releaseGaps) {
+    fail(`배포물에 채우지 않은 자리가 남아 있습니다: ${gap}`);
+  }
+}
+
 if (problems.length > 0) {
   console.error(`검사 실패 ${problems.length}건`);
   for (const problem of problems) {
@@ -257,10 +353,10 @@ if (problems.length > 0) {
   process.exit(1);
 }
 
-console.log(`검사 통과 · 파일 ${allFiles.length}개`);
+console.log(`검사 통과 · 파일 ${allFiles.length}개${releaseMode ? " · 출시 모드" : ""}`);
 if (releaseGaps.length > 0) {
   console.log("");
-  console.log(`출시 전 채워야 할 자리 ${releaseGaps.length}건 (개발 중에는 정상):`);
+  console.log(`출시 전 채워야 할 자리 ${releaseGaps.length}건 (개발 중에는 정상, npm run check:release에서는 실패):`);
   for (const gap of releaseGaps) {
     console.log(` - ${gap}`);
   }

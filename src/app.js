@@ -101,8 +101,12 @@ function reportError(error) {
 
 async function boot() {
   const authRedirectUrl = redirectUrl();
-  qs("#redirect-url").textContent = authRedirectUrl;
-  qs("#signin-redirect-url").textContent = authRedirectUrl;
+  for (const selector of ["#redirect-url", "#signin-redirect-url"]) {
+    const node = qs(selector);
+    if (node) {
+      node.textContent = authRedirectUrl;
+    }
+  }
   wireStaticHandlers();
 
   if (!isConfigured()) {
@@ -186,7 +190,11 @@ async function consumePendingCapture() {
 
 function wireStaticHandlers() {
   for (const selector of ["#btn-copy-redirect", "#btn-copy-signin-redirect"]) {
-    qs(selector).addEventListener("click", () => {
+    const button = qs(selector);
+    if (!button) {
+      continue;
+    }
+    button.addEventListener("click", () => {
       copyTextFrom(() => redirectUrl())
         .then(() => showToast("로그인 콜백 주소를 복사했습니다.", "success"))
         .catch((error) => reportError(error));
@@ -204,8 +212,8 @@ function wireStaticHandlers() {
         await loadWorkspace();
       }
     } catch (error) {
-      if (error?.code === "AUTH_REDIRECT_MISCONFIGURED") {
-        const help = qs("#auth-help");
+      const help = qs("#auth-help");
+      if (error?.code === "AUTH_REDIRECT_MISCONFIGURED" && help) {
         help.hidden = false;
         help.open = true;
       }
@@ -875,12 +883,11 @@ async function resolveOutput(boxId) {
   const values = await openForm({
     title: "값을 채워 주세요",
     description: `${view.box.name}에 채울 값입니다.`,
-    fields: variables.map((name, index) => ({
+    fields: variables.map((name) => ({
       name,
       label: name,
       placeholder: name,
-      maxLength: 200,
-      value: index === 0 ? "" : ""
+      maxLength: 200
     })),
     submitLabel: "만들기"
   });
@@ -2059,6 +2066,17 @@ async function duplicateBox(boxId) {
 }
 
 async function openInvitePanel(space) {
+  const origin = webOrigin();
+  if (!origin) {
+    await openConfirm({
+      title: "초대 링크를 만들 수 없습니다",
+      message: "config.js의 webOrigin에 실제 웹 주소를 넣어야 초대 링크가 만들어집니다. 지금은 코드와 비밀번호로 초대해 주세요.",
+      confirmLabel: "코드로 초대"
+    });
+    await setupInvite(space);
+    return;
+  }
+
   let token = null;
   try {
     token = await api.createInvite(space.id, "member", 7);
@@ -2068,7 +2086,7 @@ async function openInvitePanel(space) {
     return;
   }
 
-  const link = `${webOrigin()}/join.html?t=${token}`;
+  const link = `${origin}/join.html?t=${token}`;
   await openSheet({
     title: "팀원 초대",
     build: (body, close) => {
@@ -2122,7 +2140,18 @@ function webOrigin() {
   if (SURFACE === "web") {
     return window.location.origin;
   }
-  return CONFIG.webOrigin ?? "https://butbox.app";
+  const configured = String(CONFIG.webOrigin ?? "").replace(/\/$/, "");
+  let host = "";
+  try {
+    const parsed = new URL(configured);
+    host = parsed.protocol === "https:" ? parsed.hostname : "";
+  } catch {
+    return null;
+  }
+  if (!host.includes(".") || host !== host.toLowerCase()) {
+    return null;
+  }
+  return configured;
 }
 
 async function changeMemberRole(space, member) {

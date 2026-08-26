@@ -1,6 +1,6 @@
 # 붙박스 인수인계 문서
 
-작성일: 2026-08-25 (갱신) · 이 문서를 읽는 사람(또는 AI)이 바로 이어서 작업할 수 있도록 정리했습니다.
+작성일: 2026-08-26 (갱신) · 이 문서를 읽는 사람(또는 AI)이 바로 이어서 작업할 수 있도록 정리했습니다.
 
 ---
 
@@ -78,9 +78,10 @@ web/site.css          웹 전용 스타일 (아직 예전 초록 팔레트)
 src/                  공용 로직
 src/features/         search · templates · sorting · analytics · insert
 supabase/schema.sql   전체 스키마 (멱등, 다시 실행해도 안전)
-supabase/migrations/  델타 마이그레이션
-supabase/rls-audit.sql  보안 감사 SQL — Supabase SQL Editor에 붙여넣어 실행
-tests/                 80개 (search·templates·sorting·format·store·auth·insert·analytics·clipboard·realtime·errors·manifest)
+supabase/migrations/  델타 마이그레이션 (004가 최신 — 아직 운영 DB에 미적용)
+supabase/rls-audit.sql       보안 감사 SQL — Supabase SQL Editor에 붙여넣어 실행
+supabase/rls-penetration.sql RLS 침투 테스트 19종 — UUID 두 개 넣고 실행, 끝에 rollback
+tests/                 95개 (search·templates·sorting·format·store·auth·api·insert·analytics·clipboard·realtime·errors·manifest)
 ```
 
 **배포**: 빌드 단계 없음. 저장소 루트를 정적 호스트에 그대로 올리면 `https://도메인/`이 소개 페이지가 됩니다.
@@ -97,7 +98,8 @@ tests/                 80개 (search·templates·sorting·format·store·auth·i
 | Supabase Google Provider | **완료** (활성화됨) |
 | `config.js` | **완료** (Supabase URL + anon key 입력됨) |
 | Supabase Redirect URLs | **확인 필요** — §5 |
-| GitHub 푸시 | **미완** — 로컬이 origin보다 4커밋 앞섬, 아래 §6 |
+| `004-column-grants.sql` 실행 | **미완** — 보안 구멍 3건이 지금 열려 있음. `RELEASE_STATUS.md` C-2~C-4 |
+| GitHub 푸시 | **완료** — `origin/main`과 동기화됨 |
 | 호스팅 배포 | **미완** — 저장소가 Private이라 GitHub Pages는 유료. Cloudflare Pages / Vercel / Netlify 중 택일 |
 | `privacy.html`의 `[운영자]` `[이메일]` `[프로젝트 리전]` `[사업자 정보]` | **미완** — 웹스토어 심사에 필요. `npm run check`가 매번 목록으로 알려줌 |
 | `config.js`의 `webOrigin` | **미완** — 아직 `https://YOUR_DOMAIN` |
@@ -131,19 +133,16 @@ https://polkcadchekgljdfhadoabgcojpjpkgj.chromiumapp.org/supabase-auth
 
 ---
 
-## 6. Git 상태 — 지금 당장 확인할 것 ⚠️
+## 6. Git 상태
 
-**로컬 `main`이 `origin/main`보다 4커밋 앞서 있고 아직 푸시하지 않았습니다.**
+로컬 `main`과 `origin/main`이 **동기화돼 있습니다.** 작업 트리도 깨끗합니다.
+`npm run check`, `npm test`(95개) 전부 통과 확인됨.
 
+`workflow` 스코프가 없는 토큰으로는 `.github/workflows/` 변경을 푸시할 수 없습니다. 거부당하면:
+
+```bash
+gh auth refresh -h github.com -s workflow
 ```
-03c3db7 브리핑 기준 정책 정렬 + CI + 인수인계 문서
-0373a02 출시 체크리스트 실검증: 테스트 80개, 10KB 안내 버그 수정
-d6e9218 Merge origin/main: 출시 체크리스트 반영
-62a113b docs: add pre-release checklist   (협업자 aircloud09가 원격에 푸시했던 커밋)
-4851d20 manifest에 key를 박아 개발자마다 달라지던 확장 ID 고정
-```
-
-작업 트리는 **깨끗합니다** (커밋 안 된 변경 없음). `npm run check`, `npm test`(80개) 전부 통과 확인됨. **다음에 할 일은 `git push`뿐**입니다.
 
 ### 이전에 있었던 브랜치 분기 (참고용, 이미 해결됨)
 
@@ -186,6 +185,8 @@ d6e9218 Merge origin/main: 출시 체크리스트 반영
 | 스페이스 전환 시 편집 유실 | 저장 대기 중인 draft를 flush 안 하고 뷰를 버림 | `src/app.js` `selectSpace` |
 | 개발자마다 확장 ID가 달라 로그인 실패 | `manifest.json`에 `key` 없음 → Chrome이 설치 경로로 ID 생성 | §5 참고, 해결됨 |
 | 10KB 초과 안내가 "10KB / 지금 10KB"로 동어반복 | 반올림 때문에 한도와 현재값이 같은 문자열이 됨 | `src/format.js` `validateBoxText` — 초과량을 알려주도록 수정됨 |
+| **웹 앱이 통째로 죽어 있었음** | `boot()`이 사이드 패널에만 있는 `#signin-redirect-url`을 확인 없이 건드림 → TypeError로 핸들러 배선 전체가 중단 | `src/app.js` `boot` — 이제 `npm run check`가 두 HTML의 id 집합을 대조 |
+| 오류 토스트에 `WRONG_PASSWORD` 같은 영문 코드가 그대로 뜸 | `errorMessage()`가 `AppError`면 매핑을 건너뛰고 원문을 반환. `api.js`는 서버 원문을 `AppError`에 담아 던짐 | `src/errors.js` — 모든 경로가 `translate()`를 거치도록 수정 |
 
 SQL은 배포 전 **실제 Postgres 파서로 검증**하세요. libpg_query 바인딩(`pip install pglast`)으로 top-level과 plpgsql 본문을 둘 다 검사할 수 있습니다.
 
@@ -201,24 +202,45 @@ npm run check
 npm test
 ```
 
-`npm run check`: manifest 참조·과도한 권한·`key` 존재·CSP·인라인 스크립트·깨진 링크·깨진 import·config.js 비밀 키·schema.sql 필수 구문(용량 트리거 3종, auth 트리거, replica identity, 신규 테이블 RLS와 anon 권한 회수)·JS 문법·주석 부재·**출시 전 채워야 할 placeholder 목록**.
+```bash
+npm run check:release
+```
 
-`npm test`: **80개**. 검색(초성·띄어쓰기·태그), 템플릿 변수, 정렬, 바이트 계산, 스토리지 폴백, OAuth 오류 매핑, manifest key, analytics 개인정보 불변식, clipboard 사용자 제스처 규칙, realtime 이벤트 파싱·재연결, 에러 메시지.
+`npm run check`: manifest 참조·과도한 권한·`key` 존재·CSP·인라인 스크립트·깨진 링크·깨진 import·config.js 비밀 키·schema.sql 필수 구문(용량 트리거 3종, auth 트리거, replica identity, 신규 테이블 RLS와 anon 권한 회수, **컬럼 단위 권한**)·**두 HTML의 id 집합 대조**·**HTML 문자열 주입 금지**·JS 문법·주석 부재·**출시 전 채워야 할 placeholder 목록**.
 
-CI: `.github/workflows/check.yml`이 main 푸시와 PR마다 `npm run check`/`npm test`를 돌립니다.
+`npm run check:release`: 위 전부 + **placeholder가 하나라도 남아 있으면 실패**. 배포물(`src/`·`web/`·`auth/`·루트의 html/js/css, `config.js`, `PRIVACY.md`)만 검사하고 `config.example.js`·문서·테스트·SQL은 제외합니다.
+
+`npm test`: **95개**. 검색(초성·띄어쓰기·태그), 템플릿 변수, 정렬, 바이트 계산, 스토리지 폴백, OAuth 오류 매핑, **API 계층(토큰 갱신 재시도·id 인코딩·오류 변환)**, manifest key, analytics 개인정보 불변식, clipboard 사용자 제스처 규칙, realtime 이벤트 파싱·재연결, 에러 메시지.
+
+CI: `.github/workflows/check.yml`이 main 푸시와 PR마다 `npm run check`/`npm test`를 돌리고, `v*` 태그 또는 수동 실행일 때 `npm run check:release`까지 돌립니다.
+
+SQL은 `npm run check`가 문자열로만 훑습니다. 문법은 **실제 Postgres 파서**로 따로 검증하세요 (`pip install pglast`). 아래를 임시 파일로 저장해 돌리면 됩니다.
+
+```python
+import io, glob
+from pglast import parse_sql, parse_plpgsql
+
+for path in glob.glob("supabase/**/*.sql", recursive=True):
+    source = io.open(path, encoding="utf-8").read()
+    parse_sql(source)
+    print("ok", path)
+```
+
+`parse_sql`은 top-level 구문을, `parse_plpgsql`은 함수 본문을 검사합니다. 이번 점검에서 SQL 6개 파일 전부 통과를 확인했습니다.
 
 ---
 
 ## 10. 다음에 할 일 (우선순위 순)
 
-1. **`git push`** — 로컬이 origin보다 4커밋 앞섬. 지금 당장 해야 함
+1. **`supabase/migrations/004-column-grants.sql` 실행** — 지금 운영 DB에 보안 구멍 3건이 열려 있습니다. 비밀번호 해시 노출, 태그로 플랜 한도 우회, 남의 플랜 조회. 자세한 내용은 `RELEASE_STATUS.md` C-2~C-4
 2. **Supabase Redirect URL 등록** (§5 주소) — 안 하면 로그인이 안 됨
 3. **양쪽 PC에서 확장 재로드 후 로그인 확인**
-4. **`supabase/rls-audit.sql`을 Supabase SQL Editor에서 실행** — 13가지 보안 항목 자동 점검
-5. **Google 계정 2개로 팀·실시간·삽입 실사용 테스트** — `BUTBOX_RELEASE_CHECKLIST.md`의 미체크(135개) 대부분이 이 범주
-6. **호스팅 결정 후 배포** — Cloudflare Pages / Vercel / Netlify
-7. **`privacy.html` 실명 채우기** — 없으면 웹스토어 심사 불가
-8. **§9 검증 게이트** — 실제 CS팀에 2주 배포. 판정 쿼리:
+4. **`supabase/rls-audit.sql` 실행** — 15가지 보안 항목 자동 점검
+5. **`supabase/rls-penetration.sql` 실행** — 실제 계정 두 개로 19가지 공격 시도. 실패가 하나라도 나오면 출시 중단
+6. **Google 계정 2개로 팀·실시간·삽입 실사용 테스트** — `BUTBOX_RELEASE_CHECKLIST.md`의 미체크 대부분이 이 범주
+7. **호스팅 결정 후 배포** — Cloudflare Pages / Vercel / Netlify
+8. **`privacy.html`·`config.js` 실명·도메인 채우기** — `npm run check:release`가 통과해야 출시 가능
+9. **§9 검증 게이트** — 실제 CS팀에 2주 배포. 판정 쿼리:
    ```sql
    select user_id, count(distinct date_trunc('day', created_at)) as active_days
    from analytics_events
@@ -235,10 +257,12 @@ CI: `.github/workflows/check.yml`이 main 푸시와 PR마다 `npm run check`/`np
 | --- | --- |
 | `README.md` | 설치·설정 가이드 |
 | `ROADMAP.md` | 기능 로드맵, 브리핑 §8·§12 대조 |
-| `BUTBOX_RELEASE_CHECKLIST.md` | 출시 체크리스트 (73/208 검증 완료로 표시됨) |
-| `RELEASE_STATUS.md` | 체크리스트 항목별 검증 방법과 결과 상세 |
+| `BUTBOX_RELEASE_CHECKLIST.md` | 출시 체크리스트 |
+| `RELEASE_STATUS.md` | 체크리스트 항목별 검증 결과 + **찾아 고친 버그 · 남겨둔 판단 사항** |
 | `PRIVACY.md` | 개인정보처리방침 원본 (placeholder 포함) |
 | `HANDOFF.md` | 이 문서 |
+
+먼저 읽을 것: **`RELEASE_STATUS.md`**. 지금 무엇이 막혀 있고 무엇이 사람 손을 기다리는지가 거기 정리돼 있습니다.
 
 ---
 

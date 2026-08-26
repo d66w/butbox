@@ -74,9 +74,18 @@ https://<도메인>/auth/callback.html
 2. SQL Editor에서 [`supabase/schema.sql`](supabase/schema.sql) **전체를 한 번** 실행합니다. 여러 번 실행해도 안전합니다.
 3. Authentication → Providers → Google을 켜고 Google OAuth Client ID/Secret을 넣습니다.
 
-`schema.sql`이 만드는 것: 테이블 10개, 뷰 3개, RPC 30개, 트리거 8개, RLS 정책 12개, Realtime publication 등록.
+`schema.sql`이 만드는 것: 테이블 10개, 뷰 4개, 함수 39개, 트리거 7개, RLS 정책 13개, Realtime publication 등록.
 
-**이미 v1을 실행한 프로젝트라면** `schema.sql`을 그대로 다시 실행하면 됩니다. 모든 구문이 멱등(`if not exists` / `or replace`)이라 기존 데이터를 건드리지 않고 v2 항목만 추가합니다. 델타만 보고 싶으면 [`supabase/migrations/002-v2.sql`](supabase/migrations/002-v2.sql)에 같은 내용이 따로 있습니다.
+**이미 v1을 실행한 프로젝트라면** `schema.sql`을 그대로 다시 실행하면 됩니다. 모든 구문이 멱등(`if not exists` / `or replace`)이라 기존 데이터를 건드리지 않고 새 항목만 추가합니다. 델타만 적용하려면 `supabase/migrations/`를 번호 순으로 실행하세요.
+
+> ⚠️ **[`004-column-grants.sql`](supabase/migrations/004-column-grants.sql)은 보안 수정입니다.** 적용 전에는 같은 스페이스 멤버가 스페이스 비밀번호 해시를 읽을 수 있고, PATCH로 태그를 직접 써서 플랜 한도를 우회할 수 있습니다. 기존 프로젝트라면 지금 실행하세요.
+
+### 보안 점검용 SQL
+
+| 파일 | 용도 |
+| --- | --- |
+| [`supabase/rls-audit.sql`](supabase/rls-audit.sql) | RLS·권한 설정 감사 15항목. 그대로 붙여넣어 실행 |
+| [`supabase/rls-penetration.sql`](supabase/rls-penetration.sql) | A가 B를 공격하는 19가지 시나리오. 파일 맨 위에 실제 UUID 두 개를 넣고 실행. 끝에 `rollback` 하므로 데이터를 바꾸지 않음 |
 
 ---
 
@@ -124,7 +133,7 @@ export const CONFIG = {
 };
 ```
 
-`webOrigin`은 확장에서 초대 링크를 만들 때 쓰는 웹 주소입니다. 웹 앱은 현재 주소를 자동으로 씁니다.
+`webOrigin`은 확장에서 초대 링크를 만들 때 쓰는 웹 주소입니다. 웹 앱은 현재 주소를 자동으로 씁니다. 실제 https 도메인이 들어가기 전까지 확장은 **초대 링크를 만들지 않고** 코드·비밀번호 초대로 안내합니다 — 못 쓰는 링크를 만들면서 초대 토큰만 소모하지 않기 위해서입니다.
 
 anon key는 RLS와 함께 클라이언트에서 쓰라고 만들어진 공개 키입니다. `service_role` key, DB 비밀번호, (나중에 추가될) R2 access key는 **절대** 넣지 마세요. 브리핑 §6대로 R2 키는 Edge Function에만 둡니다. `npm run check`가 이 파일에 비밀 키로 보이는 값이 있으면 실패합니다.
 
@@ -152,9 +161,21 @@ npm run check
 npm test
 ```
 
-`npm run check`가 검사하는 것: manifest 참조 파일과 **과도한 권한**(tabs·history·cookies·`<all_urls>`), CSP의 `wss://`, 모든 HTML의 인라인 스크립트와 깨진 링크, JS의 깨진 import 경로, config.js의 비밀 키, schema.sql의 필수 구문(용량 트리거 3종·auth 트리거·replica identity·**신규 테이블 4종의 RLS와 anon 권한 회수**), 전체 JS 문법, 그리고 **모든 코드 파일에 주석이 없는지**.
+`npm run check`가 검사하는 것: manifest 참조 파일과 **과도한 권한**(tabs·history·cookies·`<all_urls>`), CSP의 `wss://`, 모든 HTML의 인라인 스크립트와 깨진 링크, JS의 깨진 import 경로, config.js의 비밀 키, schema.sql의 필수 구문(용량 트리거 3종·auth 트리거·replica identity·신규 테이블의 RLS와 anon 권한 회수·**컬럼 단위 권한**), **`sidepanel.html`과 `app.html`의 id 집합 대조**, **HTML 문자열 주입 금지**, 전체 JS 문법, 그리고 **모든 코드 파일에 주석이 없는지**.
 
-`npm test`는 검색, 템플릿 변수, 정렬, 바이트 계산, 스토리지 폴백, 사이트별 삽입 권한을 검사합니다.
+`npm test`는 **95개**입니다. 검색(초성·띄어쓰기·태그), 템플릿 변수, 정렬, 바이트 계산, 스토리지 폴백, OAuth 오류 매핑, API 계층(토큰 갱신 재시도·id 인코딩·오류 변환), manifest key, analytics 개인정보 불변식, clipboard 규칙, realtime 파싱·재연결, 오류 메시지, 사이트별 삽입 권한.
+
+### 출시 직전
+
+```bash
+npm run check:release
+```
+
+`npm run check`의 모든 항목에 더해, **배포물에 `YOUR_DOMAIN`·`[운영자]` 같은 자리표시자가 하나라도 남아 있으면 실패**합니다. 검사 대상은 `src/`·`web/`·`auth/`·루트의 `.html`/`.js`/`.css`와 `config.js`, `PRIVACY.md`입니다. `config.example.js`와 문서·테스트·SQL은 자리표시자를 그대로 둬도 됩니다.
+
+CI(`.github/workflows/check.yml`)는 main 푸시와 PR마다 `check`/`test`를, `v*` 태그를 밀거나 수동 실행할 때 `check:release`까지 돌립니다.
+
+SQL 문법은 `npm run check`가 문자열로만 훑습니다. 스키마를 고쳤다면 실제 Postgres 파서로 따로 검증하세요 — `pip install pglast` 후 `parse_sql`(top-level)과 `parse_plpgsql`(함수 본문)을 돌리면 됩니다. `HANDOFF.md` §9에 스크립트가 있습니다.
 
 ---
 
