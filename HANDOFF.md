@@ -187,6 +187,7 @@ gh auth refresh -h github.com -s workflow
 | 10KB 초과 안내가 "10KB / 지금 10KB"로 동어반복 | 반올림 때문에 한도와 현재값이 같은 문자열이 됨 | `src/format.js` `validateBoxText` — 초과량을 알려주도록 수정됨 |
 | **웹 앱이 통째로 죽어 있었음** | `boot()`이 사이드 패널에만 있는 `#signin-redirect-url`을 확인 없이 건드림 → TypeError로 핸들러 배선 전체가 중단 | `src/app.js` `boot` — 이제 `npm run check`가 두 HTML의 id 집합을 대조 |
 | 오류 토스트에 `WRONG_PASSWORD` 같은 영문 코드가 그대로 뜸 | `errorMessage()`가 `AppError`면 매핑을 건너뛰고 원문을 반환. `api.js`는 서버 원문을 `AppError`에 담아 던짐 | `src/errors.js` — 모든 경로가 `translate()`를 거치도록 수정 |
+| **CI가 테스트를 한 번도 안 돌림** | `node --test tests/**/*.test.js` — Linux 셸은 `globstar`가 꺼져 있어 `**`가 `*`처럼 동작, 매칭 0건 | `package.json` — `tests/*.test.js`로 수정. `npm run check`가 `**` 재등장을 막음 |
 
 SQL은 배포 전 **실제 Postgres 파서로 검증**하세요. libpg_query 바인딩(`pip install pglast`)으로 top-level과 plpgsql 본문을 둘 다 검사할 수 있습니다.
 

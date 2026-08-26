@@ -187,6 +187,15 @@ if (!insertFeature.includes("permissionForUrl") || !insertFeature.includes("chro
 if (!existsSync(join(root, ".github/workflows/check.yml"))) {
   fail("GitHub Actions 검사 워크플로가 없습니다.");
 }
+
+const pkg = JSON.parse(read("package.json"));
+if ((pkg.scripts?.test ?? "").includes("**")) {
+  fail("npm test 글롭에 **가 있습니다. Linux 셸은 globstar가 꺼져 있어 아무 파일도 못 찾고 CI가 조용히 통과합니다.");
+}
+const testFileCount = readdirSync(join(root, "tests")).filter((name) => name.endsWith(".test.js")).length;
+if (testFileCount < 12) {
+  fail(`테스트 파일이 ${testFileCount}개뿐입니다. 지우지 않았는지 확인하세요.`);
+}
 if (!existsSync(join(root, "supabase/migrations/003-policy-alignment.sql"))) {
   fail("기존 DB 교정용 003-policy-alignment.sql이 없습니다.");
 }
