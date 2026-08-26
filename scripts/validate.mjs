@@ -228,6 +228,40 @@ for (const match of appSource.matchAll(/qs\("#([^"]+)"\)\s*\./g)) {
   }
 }
 
+const tokenSource = read("tokens.css");
+const definedTokens = new Set([...tokenSource.matchAll(/^\s*(--[a-z0-9-]+)\s*:/gm)].map((m) => m[1]));
+
+for (const themeBlock of [':root {', ':root[data-theme="dark"] {']) {
+  if (!tokenSource.includes(themeBlock)) {
+    fail(`tokens.css에 ${themeBlock} 블록이 없습니다.`);
+  }
+}
+if (!/:root:not\(\[data-theme\]\)/.test(tokenSource)) {
+  fail("tokens.css의 prefers-color-scheme 블록이 :root:not([data-theme])로 보호되지 않습니다. 사용자가 고른 테마를 시스템이 덮어씁니다.");
+}
+
+for (const path of ["styles.css", "web/site.css"]) {
+  const source = read(path);
+  for (const match of source.matchAll(/var\((--[a-z0-9-]+)/g)) {
+    if (!definedTokens.has(match[1])) {
+      fail(`tokens.css에 없는 토큰을 씁니다: ${path} -> ${match[1]}`);
+    }
+  }
+  if (/^:root/m.test(source)) {
+    fail(`${path}이 토큰을 따로 정의합니다. tokens.css 한 곳에서만 정의하세요.`);
+  }
+}
+
+for (const page of htmlFiles) {
+  const html = read(page);
+  if (!/href="[^"]*styles\.css"|href="[^"]*site\.css"/.test(html)) {
+    continue;
+  }
+  if (!/href="[^"]*tokens\.css"/.test(html)) {
+    fail(`${page}가 tokens.css를 불러오지 않습니다. 색 토큰이 전부 비어 버립니다.`);
+  }
+}
+
 const uiSource = read("src/ui.js");
 if (/\.innerHTML\s*=|\.outerHTML\s*=|insertAdjacentHTML/.test(uiSource)) {
   fail("src/ui.js가 HTML을 그대로 삽입합니다. textContent만 쓰세요.");

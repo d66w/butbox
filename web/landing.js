@@ -1,4 +1,5 @@
 import { isConfigured, loadSession, signIn } from "../src/auth.js";
+import { initializeTheme } from "../src/theme.js";
 import { errorMessage } from "../src/errors.js";
 import { showToast } from "../src/ui.js";
 
@@ -52,5 +53,6 @@ async function wireCtaButtons() {
   }
 }
 
+initializeTheme();
 wireWaitlist();
 wireCtaButtons().catch((error) => console.error("초기화 실패", error));

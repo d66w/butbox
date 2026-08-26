@@ -74,8 +74,9 @@ join.html             초대 링크 수신
 privacy.html          공개 개인정보처리방침
 auth/callback.html    웹 OAuth 콜백
 sidepanel.html        확장 진입점
-styles.css            확장 전용 스타일 (liquid glass, 라이트/다크)
-web/site.css          웹 전용 스타일 (같은 디자인 언어, 토큰 이름만 다름)
+tokens.css            디자인 토큰 한 벌 — 확장과 웹이 공유. 색은 여기서만 정의
+styles.css            확장 전용 레이아웃 (토큰 사용만)
+web/site.css          웹 전용 레이아웃 (토큰 사용만)
 src/                  공용 로직
 src/features/         search · templates · sorting · analytics
 supabase/schema.sql   전체 스키마 (멱등, 다시 실행해도 안전)
@@ -167,13 +168,13 @@ gh auth refresh -h github.com -s workflow
 
 ## 7. 깨뜨리면 안 되는 규칙
 
-0. **테마는 첫 페인트 전에 정해집니다.** `src/theme.js`는 모듈 최상단에서 `applyTheme()`를 동기 호출합니다. 그 앞에 `await`를 넣으면 잘못된 테마로 한 번 그려졌다가 바뀌는 깜빡임이 돌아옵니다. `store.js`가 진짜 저장소이고, `localStorage` 미러는 오직 이 동기 읽기를 위해 존재합니다.
-
 1. **코드에 주석을 넣지 않습니다.** JS `//` `/* */`, CSS, HTML `<!-- -->`, SQL `--` 전부. Markdown 문서는 예외. `npm run check`가 검사합니다.
 2. **§9 검증 게이트를 건너뛰지 않습니다.** 실제 팀에서 2주 써보고 "아무도 시키지 않았는데 3일 이상 계속 쓰는 사람"이 나오기 전엔 파일 업로드를 만들지 않습니다.
 3. **RLS를 약화시키지 않습니다.** 클라이언트에서 `service_role` 금지, anon key만 사용.
 4. **텍스트는 영구 보관.** 만료를 걸면 §2 포지셔닝이 무너집니다.
 5. **박스는 최신 1개 덮어쓰기.** 여러 항목을 쌓는 구조가 아닙니다.
+6. **색은 `tokens.css`에서만 정의합니다.** `styles.css`나 `web/site.css`에 `:root`를 만들면 두 화면이 조용히 갈라집니다. `npm run check`가 막습니다. 텍스트 색을 바꿀 때는 유리 위·배경 위·반투명 표면 위 세 경우의 대비를 모두 재세요 — `.empty__desc`처럼 유리 없이 배경에 바로 놓이는 곳이 항상 가장 불리합니다.
+7. **테마는 첫 페인트 전에 정해집니다.** `src/theme.js`는 모듈 최상단에서 `applyTheme()`를 동기 호출합니다. 그 앞에 `await`를 넣으면 잘못된 테마로 한 번 그려졌다가 바뀌는 깜빡임이 돌아옵니다. `store.js`가 진짜 저장소이고, `localStorage` 미러는 오직 이 동기 읽기를 위해 존재합니다.
 
 ---
 

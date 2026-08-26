@@ -1,4 +1,5 @@
 import * as api from "../src/api.js";
+import { initializeTheme } from "../src/theme.js";
 import { loadSession, signIn } from "../src/auth.js";
 import { errorMessage } from "../src/errors.js";
 import { writeLocal } from "../src/store.js";
@@ -75,4 +76,5 @@ async function start() {
   });
 }
 
+initializeTheme();
 start().catch((error) => fail(errorMessage(error)));

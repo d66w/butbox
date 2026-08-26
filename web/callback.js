@@ -1,5 +1,8 @@
 import { completeWebSignIn } from "../src/auth.js";
+import { initializeTheme } from "../src/theme.js";
 import { errorMessage } from "../src/errors.js";
+
+initializeTheme();
 
 completeWebSignIn()
   .then(() => {

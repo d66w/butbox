@@ -44,6 +44,7 @@ join.html             초대 링크 수신
 app.html              로그인 후 앱 화면
 privacy.html          공개 개인정보처리방침
 auth/callback.html    OAuth 콜백
+tokens.css            디자인 토큰 (라이트/다크 한 벌, 확장·웹 공용)
 web/site.css          웹 전용 스타일
 web/landing.js        웹 전용 스크립트
 web/callback.js
@@ -88,6 +89,20 @@ https://<도메인>/auth/callback.html
 | --- | --- |
 | [`supabase/rls-audit.sql`](supabase/rls-audit.sql) | RLS·권한 설정 감사 15항목. 그대로 붙여넣어 실행 |
 | [`supabase/rls-penetration.sql`](supabase/rls-penetration.sql) | A가 B를 공격하는 19가지 시나리오. 파일 맨 위에 실제 UUID 두 개를 넣고 실행. 끝에 `rollback` 하므로 데이터를 바꾸지 않음 |
+
+---
+
+## 2-1. 디자인 시스템
+
+색·간격·유리 효과는 전부 [`tokens.css`](tokens.css) 한 곳에 있습니다. `styles.css`(확장)와 `web/site.css`(웹)는 토큰을 **쓰기만** 하고 정의하지 않습니다. 두 화면이 같은 값을 보도록 강제하려는 것이고, `npm run check`가 이 규칙을 검사합니다.
+
+토큰 이름은 역할로 짓습니다 — `--bg` `--surface` `--surface-hover` `--surface-raised` `--text-primary` `--text-secondary` `--text-muted` `--border` `--glass-highlight` `--shadow` `--accent`. 라이트와 다크가 **같은 이름**을 쓰고 값만 다릅니다.
+
+유리 효과는 blur 단계를 셋으로 제한했습니다. 카드 14px, 상하단 바 24px, 모달 32px. `backdrop-filter`는 비싼 속성이라 단계를 늘리지 마세요.
+
+테마는 `:root[data-theme="light"|"dark"]`로 정해집니다. 아무것도 없으면 `prefers-color-scheme`을 따르는데, 그 블록은 반드시 `:root:not([data-theme])`로 감싸야 사용자가 고른 테마를 시스템이 덮어쓰지 않습니다.
+
+**대비는 디자인보다 우선입니다.** 모든 텍스트 토큰은 유리 위·배경 위·반투명 표면 위 세 경우 모두에서 WCAG AA(4.5:1)를 넘도록 맞춰져 있습니다. 색을 바꾸면 세 경우를 다시 재보세요.
 
 ---
 
