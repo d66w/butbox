@@ -27,6 +27,7 @@ import {
 } from "./format.js";
 import { BoxRealtime, REALTIME_STATUS } from "./realtime.js";
 import { readLocal, removeLocal, writeLocal } from "./store.js";
+import { initializeTheme, wireThemeToggle } from "./theme.js";
 import { clear, el, openChoice, openConfirm, openForm, openSheet, qs, showToast } from "./ui.js";
 import { collectTags, searchBoxes } from "./features/search.js";
 import { fillTemplate, hasVariables, promptableVariables } from "./features/templates.js";
@@ -100,6 +101,7 @@ function reportError(error) {
 }
 
 async function boot() {
+  await initializeTheme();
   const authRedirectUrl = redirectUrl();
   for (const selector of ["#redirect-url", "#signin-redirect-url"]) {
     const node = qs(selector);
@@ -225,6 +227,7 @@ function wireStaticHandlers() {
 
   qs("#btn-space-picker").addEventListener("click", openSpacePicker);
   qs("#btn-space-settings").addEventListener("click", openSpaceSettings);
+  wireThemeToggle(qs("#btn-theme-toggle"));
   qs("#btn-add-box").addEventListener("click", handleAddBox);
   qs("#btn-account").addEventListener("click", openAccountSheet);
   qs("#meter-boxes").addEventListener("click", openPlanSheet);
