@@ -25,7 +25,7 @@ C:\Users\HEESEOP\OneDrive\문서\카카오톡 받은 파일\AI-인수인계-프�
 
 ## 1. 제품 한 줄
 
-매일 반복해서 입력하는 문구를 이름표 붙은 "박스"에 저장하고, 검색해서 바로 복사하거나 입력창에 넣는 도구. 같은 스페이스의 팀원이 실시간으로 공유합니다.
+매일 반복해서 쓰는 문구를 이름표 붙은 "박스"에 저장하고, 검색해서 바로 복사하는 도구. 빈 박스를 누르면 클립보드 텍스트를 바로 저장합니다. 같은 스페이스의 팀원이 실시간으로 공유합니다.
 
 주 타깃은 **고객센터·CS팀** — 같은 안내 문구를 하루에 수십 번 다시 치는 사람들.
 
@@ -41,9 +41,9 @@ C:\Users\HEESEOP\OneDrive\문서\카카오톡 받은 파일\AI-인수인계-프�
 - 박스 CRUD, 순서 변경, 복제, 텍스트 10KB 상한(초과 시 몇 바이트 줄여야 하는지 안내), 자동저장, 충돌 배지
 - Supabase Realtime 동기화 — 생성·수정·삭제 즉시 반영, 동시 수정 시 내 입력 보존, 탭 전환 시 구독 해제
 - 검색: 이름·내용·태그, 띄어쓰기 무시, **한국어 초성**(`ㅎㅂ` → 환불 안내), `#태그` 필터
-- 키보드: `↑`/`↓` 이동, `Enter` 복사, `Shift+Enter` 삽입, `Esc` 초기화
-- 템플릿 변수 `{{고객명}}` — 복사·삽입할 때 값을 물어봄. `{{오늘}}`은 자동. 같은 변수 반복·잘못된 형식 모두 안전 처리
-- 입력창 삽입 (선택 권한, chrome:// 등 차단, 실패 9가지 사유마다 안내 후 복사로 대체)
+- 키보드: `↑`/`↓` 이동, `Enter` 복사, `Esc` 초기화
+- 빈 박스 클릭 시 클립보드 텍스트 바로 저장, 이름은 박스 위에서 바로 편집
+- 템플릿 변수 `{{고객명}}` — 복사할 때 값을 물어봄. `{{오늘}}`은 자동. 같은 변수 반복·잘못된 형식 모두 안전 처리
 - 우클릭 "붙박스에 저장", `Ctrl+Shift+K` 단축키
 - 태그, 개인별 즐겨찾기, 최근 사용 정렬
 - 초대 링크, 역할(owner/admin/member)
@@ -76,12 +76,12 @@ sidepanel.html        확장 진입점
 styles.css            확장 전용 스타일 (slow roads 톤)
 web/site.css          웹 전용 스타일 (아직 예전 초록 팔레트)
 src/                  공용 로직
-src/features/         search · templates · sorting · analytics · insert
+src/features/         search · templates · sorting · analytics
 supabase/schema.sql   전체 스키마 (멱등, 다시 실행해도 안전)
 supabase/migrations/  델타 마이그레이션 (004가 최신 — 아직 운영 DB에 미적용)
 supabase/rls-audit.sql       보안 감사 SQL — Supabase SQL Editor에 붙여넣어 실행
 supabase/rls-penetration.sql RLS 침투 테스트 19종 — UUID 두 개 넣고 실행, 끝에 rollback
-tests/                 95개 (search·templates·sorting·format·store·auth·api·insert·analytics·clipboard·realtime·errors·manifest)
+tests/                 검색·템플릿·정렬·형식·스토리지·인증·API·분석·클립보드·실시간·오류·manifest
 ```
 
 **배포**: 빌드 단계 없음. 저장소 루트를 정적 호스트에 그대로 올리면 `https://도메인/`이 소개 페이지가 됩니다.
@@ -238,7 +238,7 @@ for path in glob.glob("supabase/**/*.sql", recursive=True):
 3. **양쪽 PC에서 확장 재로드 후 로그인 확인**
 4. **`supabase/rls-audit.sql` 실행** — 15가지 보안 항목 자동 점검
 5. **`supabase/rls-penetration.sql` 실행** — 실제 계정 두 개로 19가지 공격 시도. 실패가 하나라도 나오면 출시 중단
-6. **Google 계정 2개로 팀·실시간·삽입 실사용 테스트** — `BUTBOX_RELEASE_CHECKLIST.md`의 미체크 대부분이 이 범주
+6. **Google 계정 2개로 팀·실시간 실사용 테스트** — `BUTBOX_RELEASE_CHECKLIST.md`의 미체크 대부분이 이 범주
 7. **호스팅 결정 후 배포** — Cloudflare Pages / Vercel / Netlify
 8. **`privacy.html`·`config.js` 실명·도메인 채우기** — `npm run check:release`가 통과해야 출시 가능
 9. **§9 검증 게이트** — 실제 CS팀에 2주 배포. 판정 쿼리:

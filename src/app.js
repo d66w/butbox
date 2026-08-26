@@ -8,7 +8,7 @@ import {
   signIn,
   signOut
 } from "./auth.js";
-import { copyTextFrom, readPastedText } from "./clipboard.js";
+import { copyTextFrom, readClipboardText, readPastedText } from "./clipboard.js";
 import { AUTOSAVE_DELAY_MS, STORAGE_KEYS, TEXT_MAX_BYTES, UPGRADE_LEVERS } from "./constants.js";
 import { errorMessage, isAuthError } from "./errors.js";
 import {
@@ -33,19 +33,13 @@ import { collectTags, searchBoxes } from "./features/search.js";
 import { fillTemplate, hasVariables, promptableVariables } from "./features/templates.js";
 import { SORT_MODES, sortBoxes } from "./features/sorting.js";
 import { track } from "./features/analytics.js";
-import {
-  INSERT_MESSAGES,
-  hasPermission,
-  insertIntoActiveTab,
-  isSupported as insertSupported,
-  requestPermission
-} from "./features/insert.js";
 
 const SURFACE = typeof chrome !== "undefined" && chrome.sidePanel ? "extension" : "web";
 const PENDING_CAPTURE_KEY = "butbox.pendingCapture";
 const FOCUS_SEARCH_KEY = "butbox.focusSearch";
 const PENDING_INVITE_KEY = "butbox.pendingInvite";
 const SEARCH_DEBOUNCE_MS = 120;
+const NEW_BOX_NAME = "새 박스";
 
 const state = {
   view: "loading",
@@ -63,8 +57,6 @@ const state = {
   sortMode: SORT_MODES.manual,
   visibleIds: [],
   activeIndex: -1,
-  insertAvailable: false,
-  insertPermission: false,
   liveStatus: REALTIME_STATUS.idle
 };
 
@@ -122,7 +114,6 @@ async function boot() {
     return;
   }
   state.session = session;
-  await detectInsertSupport();
   await consumePendingInvite();
   await loadWorkspace();
   await consumePendingCapture();
@@ -157,13 +148,6 @@ async function consumePendingInvite() {
     track("space_joined", { surface: "invite_link" });
   } catch (error) {
     showToast(errorMessage(error), "error");
-  }
-}
-
-async function detectInsertSupport() {
-  state.insertAvailable = insertSupported();
-  if (state.insertAvailable) {
-    state.insertPermission = await hasPermission();
   }
 }
 
@@ -282,11 +266,7 @@ function wireStaticHandlers() {
       if (!id) {
         return;
       }
-      if (event.shiftKey && state.insertAvailable) {
-        insertBox(id, "search");
-      } else {
-        copyBox(id, "search");
-      }
+      handleBoxClick(id, "search");
     }
   });
 
@@ -674,7 +654,32 @@ function createBoxView(box) {
     }
   });
 
-  const nameEl = el("span", { class: "box__name" });
+  const nameInput = el("input", {
+    class: "box__name",
+    type: "text",
+    maxLength: 40,
+    autocomplete: "off",
+    spellcheck: false,
+    "aria-label": "박스 이름",
+    onclick: (event) => event.stopPropagation(),
+    onkeydown: (event) => {
+      event.stopPropagation();
+      if (event.key === "Enter") {
+        event.preventDefault();
+        commitBoxName(box.id);
+        nameInput.blur();
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        restoreBoxName(box.id);
+        nameInput.blur();
+      }
+    },
+    oninput: () => {
+      nameInput.dataset.dirty = "true";
+    },
+    onblur: () => commitBoxName(box.id)
+  });
   const previewEl = el("span", { class: "box__preview" });
   const tagsEl = el("span", { class: "box__tags" });
 
@@ -690,50 +695,35 @@ function createBoxView(box) {
 
   const actions = el("div", { class: "box__acts" }, [editButton]);
 
-  let insertButton = null;
-  if (state.insertAvailable) {
-    insertButton = el("button", {
-      class: "box__act box__act--ghost",
-      type: "button",
-      text: "삽입",
-      onclick: (event) => {
-        event.stopPropagation();
-        insertBox(box.id, "card");
-      }
-    });
-    actions.append(insertButton);
-  }
-
   const root = el(
     "article",
     {
       class: "box",
       dataset: { boxId: box.id, active: "false" },
-      onclick: () => copyBox(box.id, "card"),
+      onclick: () => handleBoxClick(box.id, "card"),
       onkeydown: (event) => {
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
-          copyBox(box.id, "card");
+          handleBoxClick(box.id, "card");
         }
       }
     },
     [
-      el("div", { class: "box__head" }, [nameEl, starEl]),
+      el("div", { class: "box__head" }, [nameInput, starEl]),
       previewEl,
       el("div", { class: "box__foot" }, [tagsEl, actions])
     ]
   );
-  root.setAttribute("role", "button");
+  root.setAttribute("role", "group");
   root.setAttribute("tabindex", "0");
 
   return {
     root,
     starEl,
-    nameEl,
+    nameInput,
     previewEl,
     tagsEl,
     editButton,
-    insertButton,
     timer: null,
     dirty: false,
     saving: false,
@@ -748,12 +738,15 @@ function createBoxView(box) {
 
 function updateBoxView(view, box) {
   view.box = box;
-  const label = box.locked ? `${box.name} · 읽기 전용` : box.name;
-  if (view.nameEl.textContent !== label) {
-    view.nameEl.textContent = label;
+  const editingName = document.activeElement === view.nameInput;
+  if (!editingName && view.nameInput.value !== box.name) {
+    view.nameInput.value = box.name;
+    view.nameInput.dataset.dirty = "false";
   }
-  view.root.setAttribute("aria-label", `${box.name} 눌러서 복사`);
-  view.root.title = "눌러서 복사 · 수정은 오른쪽 버튼";
+  view.nameInput.disabled = Boolean(box.locked);
+  view.nameInput.title = box.locked ? "읽기 전용 박스" : "클릭해서 이름 바꾸기";
+  view.root.setAttribute("aria-label", `${box.name} 박스`);
+  view.root.title = "내용이 있으면 복사합니다. 빈 박스는 클립보드 텍스트를 저장합니다.";
   view.root.dataset.locked = box.locked ? "true" : "false";
   view.root.dataset.template = hasVariables(box.text_content) ? "true" : "false";
 
@@ -913,6 +906,57 @@ function markUsed(boxId) {
   api.touchBox(boxId).catch(() => {});
 }
 
+function handleBoxClick(boxId, surface) {
+  const view = boxViews.get(boxId);
+  if (!view) {
+    return;
+  }
+  if ((view.draft ?? "").trim().length === 0) {
+    saveClipboardToBox(boxId);
+    return;
+  }
+  copyBox(boxId, surface);
+}
+
+async function saveClipboardToBox(boxId) {
+  const view = boxViews.get(boxId);
+  if (!view || view.box.locked) {
+    showToast("읽기 전용 박스에는 저장할 수 없습니다.", "info");
+    return;
+  }
+  if (view.saving) {
+    showToast("저장이 끝난 뒤 다시 눌러 주세요.", "info");
+    return;
+  }
+
+  let text = "";
+  try {
+    text = await readClipboardText();
+  } catch {
+    showToast("클립보드 내용을 읽지 못했습니다. 브라우저 권한을 확인해 주세요.", "info");
+    return;
+  }
+
+  if (text.trim().length === 0) {
+    showToast("클립보드에 저장할 텍스트가 없습니다.", "info");
+    return;
+  }
+
+  const check = validateBoxText(text);
+  if (!check.ok) {
+    showToast(check.message, "error");
+    return;
+  }
+
+  view.draft = text;
+  view.dirty = true;
+  renderPreview(view);
+  const saved = await saveBox(boxId);
+  if (saved) {
+    showToast("클립보드 내용을 박스에 저장했습니다.", "success");
+  }
+}
+
 function copyBox(boxId, surface) {
   const view = boxViews.get(boxId);
   if (!view) {
@@ -957,54 +1001,6 @@ function finishCopy(view, boxId, text, surface) {
   markUsed(boxId);
   track("box_copied", { surface: surface ?? SURFACE });
   showToast(`복사했습니다 · ${previewText(text, 22)}`, "success");
-}
-
-async function insertBox(boxId, surface) {
-  if (!state.insertAvailable) {
-    copyBox(boxId, surface);
-    return;
-  }
-
-  if (!state.insertPermission) {
-    const granted = await requestInsertPermission();
-    if (!granted) {
-      showToast("권한을 허용하지 않아 복사로 대신합니다.", "info");
-      copyBox(boxId, surface);
-      return;
-    }
-  }
-
-  const result = await resolveOutput(boxId);
-  if (!result) {
-    return;
-  }
-  if (!result.text) {
-    showToast("이 박스는 비어 있습니다.", "info");
-    return;
-  }
-
-  const outcome = await insertIntoActiveTab(result.text);
-  if (outcome.ok) {
-    markUsed(boxId);
-    track("box_inserted", { surface: surface ?? SURFACE });
-    showToast("입력창에 넣었습니다.", "success");
-    return;
-  }
-
-  try {
-    await copyTextFrom(() => result.text);
-    markUsed(boxId);
-    track("box_copied", { surface: surface ?? SURFACE, reason: outcome.reason });
-    showToast(INSERT_MESSAGES[outcome.reason] ?? INSERT_MESSAGES.FAILED, "info");
-  } catch (error) {
-    reportError(error);
-  }
-}
-
-async function requestInsertPermission() {
-  const granted = await requestPermission();
-  state.insertPermission = granted;
-  return granted;
 }
 
 async function openBoxEditor(boxId) {
@@ -1083,17 +1079,6 @@ async function openBoxEditor(boxId) {
         })
       ]);
 
-      if (state.insertAvailable) {
-        actions.append(
-          el("button", {
-            class: "btn",
-            type: "button",
-            text: "삽입",
-            onclick: () => insertBox(boxId, "editor")
-          })
-        );
-      }
-
       actions.append(
         el("button", {
           class: "btn",
@@ -1154,25 +1139,25 @@ function saveBox(boxId) {
 async function runSave(boxId) {
   const view = boxViews.get(boxId);
   if (!view) {
-    return;
+    return false;
   }
   if (view.saving) {
     view.resaveRequested = true;
-    return;
+    return false;
   }
 
   const value = view.draft;
   if (value === view.savedValue) {
     view.dirty = false;
     refreshEditor(view);
-    return;
+    return true;
   }
 
   const check = validateBoxText(value);
   if (!check.ok) {
     setStatus(view, "너무 큽니다");
     showToast(check.message, "error");
-    return;
+    return false;
   }
 
   view.saving = true;
@@ -1209,8 +1194,9 @@ async function runSave(boxId) {
   const wantsResave = view.resaveRequested || view.draft !== view.savedValue;
   view.resaveRequested = false;
   if (succeeded && wantsResave && boxViews.has(boxId)) {
-    await runSave(boxId);
+    return runSave(boxId);
   }
+  return succeeded;
 }
 
 function applyRemote(boxId) {
@@ -1231,34 +1217,63 @@ function applyRemote(boxId) {
   showToast("팀원이 저장한 내용을 불러왔습니다.", "success");
 }
 
-async function renameBox(boxId) {
-  const box = state.boxes.find((item) => item.id === boxId);
-  if (!box) {
+async function commitBoxName(boxId) {
+  const view = boxViews.get(boxId);
+  if (!view || view.box.locked || view.nameInput.dataset.dirty !== "true") {
     return;
   }
-  const values = await openForm({
-    title: "박스 이름 바꾸기",
-    fields: [
-      {
-        name: "name",
-        label: "이름표",
-        value: box.name,
-        maxLength: 40,
-        validate: validateBoxName
-      }
-    ],
-    submitLabel: "저장"
-  });
-  if (!values) {
+
+  const input = view.nameInput;
+  const check = validateBoxName(input.value);
+  if (!check.ok) {
+    input.value = view.box.name;
+    input.dataset.dirty = "false";
+    showToast(check.message, "info");
     return;
   }
+
+  if (check.value === view.box.name) {
+    input.value = check.value;
+    input.dataset.dirty = "false";
+    return;
+  }
+
+  input.value = check.value;
+  input.dataset.dirty = "false";
+  input.disabled = true;
   try {
-    await api.renameBox(boxId, validateBoxName(values.name).value);
-    box.name = validateBoxName(values.name).value;
+    const rows = await api.renameBox(boxId, check.value);
+    const saved = Array.isArray(rows) ? rows[0] : rows;
+    const index = state.boxes.findIndex((box) => box.id === boxId);
+    if (index !== -1) {
+      state.boxes[index] = { ...state.boxes[index], ...saved, name: check.value };
+      view.box = state.boxes[index];
+    }
     renderBoxes();
   } catch (error) {
+    input.value = view.box.name;
     reportError(error);
+  } finally {
+    input.disabled = Boolean(view.box.locked);
   }
+}
+
+function restoreBoxName(boxId) {
+  const view = boxViews.get(boxId);
+  if (!view) {
+    return;
+  }
+  view.nameInput.value = view.box.name;
+  view.nameInput.dataset.dirty = "false";
+}
+
+function focusBoxName(boxId) {
+  const input = boxViews.get(boxId)?.nameInput;
+  if (!input || input.disabled) {
+    return;
+  }
+  input.focus();
+  input.select();
 }
 
 async function moveBox(boxId, delta) {
@@ -1290,7 +1305,6 @@ async function openBoxMenu(boxId) {
   }
 
   const options = [
-    { value: "rename", label: "이름 바꾸기" },
     { value: "tags", label: "태그", description: (box.tags ?? []).join(", ") || "태그 없음" },
     {
       value: "favorite",
@@ -1310,11 +1324,6 @@ async function openBoxMenu(boxId) {
   );
 
   const choice = await openChoice({ title: box.name, options });
-
-  if (choice === "rename") {
-    await renameBox(boxId);
-    return;
-  }
 
   if (choice === "tags") {
     await editBoxTags(boxId);
@@ -1382,29 +1391,12 @@ async function handleAddBox() {
     return;
   }
 
-  const values = await openForm({
-    title: "새 박스",
-    description: "무엇을 넣어둘 자리인지 이름표를 붙여 주세요.",
-    fields: [
-      {
-        name: "name",
-        label: "이름표",
-        placeholder: "회사 계좌",
-        maxLength: 40,
-        validate: validateBoxName
-      }
-    ],
-    submitLabel: "만들기"
-  });
-  if (!values) {
-    return;
-  }
-
   try {
-    await api.createBox(space.id, validateBoxName(values.name).value);
+    const boxId = await api.createBox(space.id, NEW_BOX_NAME);
     await refreshBoxes();
+    focusBoxName(boxId);
     track("box_created", { surface: SURFACE });
-    showToast("박스를 만들었습니다.", "success");
+    showToast("새 박스를 만들었습니다. 이름을 바로 입력해 보세요.", "success");
   } catch (error) {
     reportError(error);
   }
@@ -1852,12 +1844,9 @@ async function openAccountSheet() {
     options: [
       { value: "plan", label: "요금제 보기", description: "무료 한도와 Pro 준비안 비교" },
       { value: "sort", label: `정렬 · ${sortLabel(state.sortMode)}`, description: "내 순서 / 최근 사용 / 이름" },
-      state.insertAvailable && !state.insertPermission
-        ? { value: "grant", label: "삽입 권한 허용", description: "입력창에 바로 넣으려면 필요합니다." }
-        : null,
       { value: "refresh", label: "새로고침", description: "서버에서 최신 상태를 다시 받아옵니다." },
       { value: "signout", label: "로그아웃", danger: true }
-    ].filter(Boolean)
+    ]
   });
 
   if (choice === "plan") {
@@ -1867,13 +1856,6 @@ async function openAccountSheet() {
 
   if (choice === "sort") {
     await pickSortMode();
-    return;
-  }
-
-  if (choice === "grant") {
-    const granted = await requestInsertPermission();
-    showToast(granted ? "이제 입력창에 바로 넣을 수 있습니다." : "권한을 허용하지 않았습니다.", granted ? "success" : "info");
-    renderBoxes();
     return;
   }
 

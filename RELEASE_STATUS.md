@@ -151,7 +151,6 @@ https://polkcadchekgljdfhadoabgcojpjpkgj.chromiumapp.org/supabase-auth
 
 - OAuth 로그인/로그아웃/재로그인/세션 만료 (§1-1)
 - **Google 계정 2개로 Team·Realtime 테스트** (§5) — 초대, 권한, 실시간 반영, 충돌 UI
-- 실제 사이트 삽입 테스트 (§4) — React/Vue/Google/Naver/Slack/iframe
 - 네트워크 장애 테스트 (§8)
 - 새로고침 후 데이터 유지 (§2-2, §2-4)
 

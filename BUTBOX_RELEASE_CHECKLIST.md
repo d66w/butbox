@@ -97,7 +97,6 @@
 - [x] `{{오늘}}` 자동 입력
 - [x] `{{지금}}` 자동 입력
 - [x] 복사 시 변수 처리
-- [x] 삽입 시 변수 처리
 - [x] 잘못된 템플릿 형식 처리
 
 ---
@@ -118,7 +117,6 @@
 - [ ] 검색창 포커스
 - [x] `↑` / `↓` 검색 결과 이동
 - [x] `Enter` 복사
-- [x] `Shift+Enter` 삽입
 - [x] `Esc` 검색 초기화
 
 ## 3-3. 복사
@@ -126,31 +124,6 @@
 - [x] 카드 본문 클릭 복사
 - [x] 클립보드 권한/실패 상황 확인
 - [x] 복사 성공 피드백 확인
-
----
-
-# 🟠 4. 웹페이지 삽입 기능 테스트
-
-다음 환경에서 실제 테스트:
-
-- [ ] 일반 `<input>`
-- [ ] `<textarea>`
-- [ ] `contenteditable`
-- [ ] React 기반 입력창
-- [ ] Vue 기반 입력창
-- [ ] 일반 HTML form
-- [ ] Google 계열 웹 입력창
-- [ ] Naver 계열 웹 입력창
-- [ ] Slack 등 웹 앱 입력창
-- [ ] iframe 입력창
-- [ ] 지원되지 않는 입력창
-
-### 실패 상황
-- [x] 삽입 불가능한 곳에서 자동 복사 fallback
-- [x] `chrome://` 페이지에서 오류 없이 처리
-- [x] Chrome Web Store 페이지에서 오류 없이 처리
-- [x] DevTools 등 제한된 페이지에서 오류 없이 처리
-- [x] 비밀번호 입력창에는 삽입하지 않음
 
 ---
 
@@ -247,7 +220,7 @@ Google 계정 A와 B 두 개를 사용해서 테스트한다.
 
 # 🟡 9. 자동 테스트 강화
 
-현재 단위 테스트 **95개** (`analytics` `api` `auth` `clipboard` `errors` `format` `insert` `manifest` `realtime` `search` `sorting` `store` `templates`).
+현재 단위 테스트 **93개** (`analytics` `api` `auth` `clipboard` `errors` `format` `manifest` `realtime` `search` `sorting` `store` `templates`).
 
 - [x] 인증 흐름 테스트 — `tests/auth.test.js`
 - [x] **API 함수 테스트** — `tests/api.test.js` 11개. 헤더·토큰 갱신 재시도·id 인코딩·오류 변환·204 처리
@@ -257,7 +230,6 @@ Google 계정 A와 B 두 개를 사용해서 테스트한다.
 - [ ] 초대 로직 테스트 — 전량 SQL(plpgsql)에 있어 단위 테스트로 덮이지 않음. 위 SQL로 대체
 - [ ] 박스 CRUD 통합 테스트
 - [ ] 템플릿 + 복사 통합 테스트
-- [ ] 템플릿 + 삽입 통합 테스트
 
 가능하다면 최종적으로:
 - [ ] Playwright 또는 Chrome 기반 E2E 테스트 추가
@@ -389,15 +361,14 @@ npm run check:release
 3. 박스 CRUD 정상
 4. 검색 정상
 5. 복사 정상
-6. 삽입 정상 + fallback 정상
-7. 템플릿 정상
-8. 2계정 Team 기능 정상
-9. Realtime 정상
-10. RLS 검증 완료
-11. 개인정보처리방침 완료
-12. 실제 도메인/OAuth 설정 완료
-13. `npm run check` 통과
-14. `npm test` 통과
+6. 템플릿 정상
+7. 2계정 Team 기능 정상
+8. Realtime 정상
+9. RLS 검증 완료
+10. 개인정보처리방침 완료
+11. 실제 도메인/OAuth 설정 완료
+12. `npm run check` 통과
+13. `npm test` 통과
 
 ## 🔴 출시 보류
 
@@ -408,7 +379,6 @@ npm run check:release
 - Team 데이터 동기화 실패
 - 박스 데이터 유실
 - 저장 실패가 사용자에게 숨겨짐
-- 삽입 기능이 주요 환경에서 작동하지 않음
 - Extension ID와 OAuth Redirect 불일치
 - 개인정보처리방침 미완성
 - placeholder가 실제 배포물에 남아 있음
@@ -421,10 +391,9 @@ npm run check:release
 2. **실제 Chrome 통합 테스트**
 3. **2계정 Team / Realtime 테스트**
 4. **RLS 보안 테스트**
-5. **삽입 기능 실제 사이트 테스트**
-6. **예외/네트워크 테스트**
-7. **개인정보처리방침/도메인 설정**
-8. **Web Store 제출 준비**
-9. **베타 출시**
-10. **실사용 데이터 검증**
-11. 그 이후에 파일/AI/결제 기능 개발
+5. **예외/네트워크 테스트**
+6. **개인정보처리방침/도메인 설정**
+7. **Web Store 제출 준비**
+8. **베타 출시**
+9. **실사용 데이터 검증**
+10. 그 이후에 파일/AI/결제 기능 개발

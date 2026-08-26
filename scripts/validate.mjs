@@ -179,11 +179,6 @@ for (const forbidden of ["팀원 3명까지", "박스 300개", "박스 1,000개"
   }
 }
 
-const insertFeature = read("src/features/insert.js");
-if (!insertFeature.includes("permissionForUrl") || !insertFeature.includes("chrome.permissions.request(permission)")) {
-  fail("삽입 권한을 현재 사이트 origin 단위로 요청하지 않습니다.");
-}
-
 if (!existsSync(join(root, ".github/workflows/check.yml"))) {
   fail("GitHub Actions 검사 워크플로가 없습니다.");
 }
@@ -193,7 +188,7 @@ if ((pkg.scripts?.test ?? "").includes("**")) {
   fail("npm test 글롭에 **가 있습니다. Linux 셸은 globstar가 꺼져 있어 아무 파일도 못 찾고 CI가 조용히 통과합니다.");
 }
 const testFileCount = readdirSync(join(root, "tests")).filter((name) => name.endsWith(".test.js")).length;
-if (testFileCount < 12) {
+if (testFileCount < 11) {
   fail(`테스트 파일이 ${testFileCount}개뿐입니다. 지우지 않았는지 확인하세요.`);
 }
 if (!existsSync(join(root, "supabase/migrations/003-policy-alignment.sql"))) {

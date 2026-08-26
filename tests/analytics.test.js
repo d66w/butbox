@@ -5,7 +5,7 @@ import { isAllowedEvent, isSafeKey, sanitize, TRACKED_EVENTS } from "../src/feat
 
 test("only the documented events are ever sent", () => {
   const documented = [
-    "signup", "box_created", "box_copied", "box_inserted", "search_used",
+    "signup", "box_created", "box_copied", "search_used",
     "favorite_used", "space_created", "space_joined", "upgrade_clicked",
     "upgrade_started", "subscription_active", "template_filled",
     "box_duplicated", "context_saved", "invite_created"

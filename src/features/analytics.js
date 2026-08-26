@@ -4,7 +4,6 @@ const ALLOWED = new Set([
   "signup",
   "box_created",
   "box_copied",
-  "box_inserted",
   "search_used",
   "favorite_used",
   "space_created",

@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { copyTextFrom, readPastedText } from "../src/clipboard.js";
+import { copyTextFrom, readClipboardText, readPastedText } from "../src/clipboard.js";
 
-function stubClipboard({ writeFails = false } = {}) {
-  const calls = { write: 0, writeText: [], itemTypes: [] };
+function stubClipboard({ writeFails = false, readText = "" } = {}) {
+  const calls = { write: 0, writeText: [], readText: 0, itemTypes: [] };
 
   globalThis.ClipboardItem = class {
     constructor(payload) {
@@ -23,6 +23,10 @@ function stubClipboard({ writeFails = false } = {}) {
     },
     writeText: async (text) => {
       calls.writeText.push(text);
+    },
+    readText: async () => {
+      calls.readText += 1;
+      return readText;
     }
   };
 
@@ -89,6 +93,12 @@ test("empty and nullish values copy as an empty string, not the word null", asyn
   await copyTextFrom(() => null);
   await copyTextFrom(() => undefined);
   assert.deepEqual(calls.writeText, ["", ""]);
+});
+
+test("clipboard text can be read for an empty box", async () => {
+  const calls = stubClipboard({ readText: "클립보드 문구" });
+  assert.equal(await readClipboardText(), "클립보드 문구");
+  assert.equal(calls.readText, 1);
 });
 
 test("pasted plain text is recognised", () => {

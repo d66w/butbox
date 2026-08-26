@@ -24,6 +24,13 @@ export function copyTextFrom(loadText) {
   });
 }
 
+export async function readClipboardText() {
+  if (typeof navigator.clipboard?.readText !== "function") {
+    throw new Error("Clipboard read is unavailable.");
+  }
+  return String((await navigator.clipboard.readText()) ?? "");
+}
+
 export function readPastedText(event) {
   const data = event.clipboardData;
   if (!data) {
