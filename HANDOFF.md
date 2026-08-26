@@ -65,6 +65,7 @@ C:\Users\HEESEOP\OneDrive\문서\카카오톡 받은 파일\AI-인수인계-프�
 | --- | --- |
 | `src/auth.js` | `chrome.identity` 있으면 팝업 OAuth, 없으면 페이지 리디렉션 |
 | `src/store.js` | `chrome.storage.local` 있으면 그것, 없으면 `localStorage` |
+| `src/theme.js` | 저장은 `store.js`가 담당. 첫 페인트 전에 색을 정해야 해서 `localStorage`에 같은 값을 동기 미러로 하나 더 씁니다 |
 
 ```
 index.html            소개 페이지 (사이트 홈)
@@ -73,8 +74,8 @@ join.html             초대 링크 수신
 privacy.html          공개 개인정보처리방침
 auth/callback.html    웹 OAuth 콜백
 sidepanel.html        확장 진입점
-styles.css            확장 전용 스타일 (slow roads 톤)
-web/site.css          웹 전용 스타일 (아직 예전 초록 팔레트)
+styles.css            확장 전용 스타일 (liquid glass, 라이트/다크)
+web/site.css          웹 전용 스타일 (같은 디자인 언어, 토큰 이름만 다름)
 src/                  공용 로직
 src/features/         search · templates · sorting · analytics
 supabase/schema.sql   전체 스키마 (멱등, 다시 실행해도 안전)
@@ -136,7 +137,7 @@ https://polkcadchekgljdfhadoabgcojpjpkgj.chromiumapp.org/supabase-auth
 ## 6. Git 상태
 
 로컬 `main`과 `origin/main`이 **동기화돼 있습니다.** 작업 트리도 깨끗합니다.
-`npm run check`, `npm test`(95개) 전부 통과 확인됨.
+`npm run check`, `npm test`(93개) 전부 통과 확인됨.
 
 `workflow` 스코프가 없는 토큰으로는 `.github/workflows/` 변경을 푸시할 수 없습니다. 거부당하면:
 
@@ -165,6 +166,8 @@ gh auth refresh -h github.com -s workflow
 ---
 
 ## 7. 깨뜨리면 안 되는 규칙
+
+0. **테마는 첫 페인트 전에 정해집니다.** `src/theme.js`는 모듈 최상단에서 `applyTheme()`를 동기 호출합니다. 그 앞에 `await`를 넣으면 잘못된 테마로 한 번 그려졌다가 바뀌는 깜빡임이 돌아옵니다. `store.js`가 진짜 저장소이고, `localStorage` 미러는 오직 이 동기 읽기를 위해 존재합니다.
 
 1. **코드에 주석을 넣지 않습니다.** JS `//` `/* */`, CSS, HTML `<!-- -->`, SQL `--` 전부. Markdown 문서는 예외. `npm run check`가 검사합니다.
 2. **§9 검증 게이트를 건너뛰지 않습니다.** 실제 팀에서 2주 써보고 "아무도 시키지 않았는데 3일 이상 계속 쓰는 사람"이 나오기 전엔 파일 업로드를 만들지 않습니다.

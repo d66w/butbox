@@ -3,11 +3,35 @@ import { readLocal, writeLocal } from "./store.js";
 const THEME_KEY = "butbox.theme";
 const media = window.matchMedia("(prefers-color-scheme: dark)");
 
-let preference = "system";
+export const THEME_OPTIONS = ["system", "light", "dark"];
+
+const LABELS = {
+  system: "시스템 설정 따르기",
+  light: "라이트",
+  dark: "다크"
+};
 
 function normalizeTheme(value) {
-  return value === "light" || value === "dark" || value === "system" ? value : "system";
+  return THEME_OPTIONS.includes(value) ? value : "system";
 }
+
+function readMirror() {
+  try {
+    return normalizeTheme(JSON.parse(window.localStorage.getItem(THEME_KEY)));
+  } catch {
+    return "system";
+  }
+}
+
+function writeMirror(value) {
+  try {
+    window.localStorage.setItem(THEME_KEY, JSON.stringify(value));
+  } catch {
+    return;
+  }
+}
+
+let preference = readMirror();
 
 function resolveTheme(value = preference) {
   if (value === "system") {
@@ -22,9 +46,12 @@ function renderToggle(button) {
   }
   const theme = resolveTheme();
   const nextLabel = theme === "dark" ? "라이트 모드로 전환" : "다크 모드로 전환";
+  const suffix = preference === "system" ? " (지금은 시스템 설정을 따릅니다)" : "";
   button.dataset.theme = theme;
-  button.setAttribute("aria-label", nextLabel);
-  button.setAttribute("title", nextLabel);
+  button.dataset.preference = preference;
+  button.setAttribute("aria-label", nextLabel + suffix);
+  button.setAttribute("title", nextLabel + suffix);
+  button.setAttribute("aria-pressed", theme === "dark" ? "true" : "false");
 }
 
 function applyTheme(value = preference) {
@@ -36,25 +63,45 @@ function applyTheme(value = preference) {
   renderToggle(document.querySelector("#btn-theme-toggle"));
 }
 
-export async function initializeTheme() {
-  try {
-    preference = normalizeTheme(await readLocal(THEME_KEY));
-  } catch {
-    preference = "system";
-  }
+applyTheme();
+
+export function themePreference() {
+  return preference;
+}
+
+export function themeLabel(value = preference) {
+  return LABELS[normalizeTheme(value)];
+}
+
+export async function setThemePreference(value) {
+  preference = normalizeTheme(value);
   applyTheme();
+  writeMirror(preference);
+  try {
+    await writeLocal(THEME_KEY, preference);
+  } catch {
+    return;
+  }
+}
+
+export async function initializeTheme() {
+  let stored = preference;
+  try {
+    stored = normalizeTheme(await readLocal(THEME_KEY));
+  } catch {
+    stored = preference;
+  }
+  if (stored !== preference) {
+    preference = stored;
+    applyTheme();
+  }
+  writeMirror(preference);
 }
 
 export function wireThemeToggle(button) {
   renderToggle(button);
-  button.addEventListener("click", async () => {
-    preference = resolveTheme() === "dark" ? "light" : "dark";
-    applyTheme();
-    try {
-      await writeLocal(THEME_KEY, preference);
-    } catch {
-      return;
-    }
+  button.addEventListener("click", () => {
+    setThemePreference(resolveTheme() === "dark" ? "light" : "dark");
   });
 }
 

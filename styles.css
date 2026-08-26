@@ -2,7 +2,7 @@
   --paper: #f7f8fc;
   --ink: #202533;
   --ink-soft: rgba(32, 37, 51, 0.68);
-  --ink-faint: rgba(32, 37, 51, 0.45);
+  --ink-faint: rgba(32, 37, 51, 0.64);
   --glass: rgba(255, 255, 255, 0.52);
   --glass-hover: rgba(255, 255, 255, 0.73);
   --glass-solid: rgba(255, 255, 255, 0.88);
@@ -41,7 +41,7 @@
   --paper: #10141d;
   --ink: #f2f5fb;
   --ink-soft: rgba(226, 232, 243, 0.76);
-  --ink-faint: rgba(201, 211, 227, 0.54);
+  --ink-faint: rgba(201, 211, 227, 0.57);
   --glass: rgba(27, 33, 45, 0.62);
   --glass-hover: rgba(38, 46, 62, 0.72);
   --glass-solid: rgba(42, 50, 67, 0.82);
@@ -72,7 +72,7 @@
     --paper: #10141d;
     --ink: #f2f5fb;
     --ink-soft: rgba(226, 232, 243, 0.76);
-    --ink-faint: rgba(201, 211, 227, 0.54);
+    --ink-faint: rgba(201, 211, 227, 0.57);
     --glass: rgba(27, 33, 45, 0.62);
     --glass-hover: rgba(38, 46, 62, 0.72);
     --glass-solid: rgba(42, 50, 67, 0.82);

@@ -27,7 +27,7 @@ import {
 } from "./format.js";
 import { BoxRealtime, REALTIME_STATUS } from "./realtime.js";
 import { readLocal, removeLocal, writeLocal } from "./store.js";
-import { initializeTheme, wireThemeToggle } from "./theme.js";
+import { initializeTheme, setThemePreference, themeLabel, themePreference, wireThemeToggle } from "./theme.js";
 import { clear, el, openChoice, openConfirm, openForm, openSheet, qs, showToast } from "./ui.js";
 import { collectTags, searchBoxes } from "./features/search.js";
 import { fillTemplate, hasVariables, promptableVariables } from "./features/templates.js";
@@ -1844,6 +1844,7 @@ async function openAccountSheet() {
     options: [
       { value: "plan", label: "요금제 보기", description: "무료 한도와 Pro 준비안 비교" },
       { value: "sort", label: `정렬 · ${sortLabel(state.sortMode)}`, description: "내 순서 / 최근 사용 / 이름" },
+      { value: "theme", label: `화면 모드 · ${themeLabel()}`, description: "시스템 설정 / 라이트 / 다크" },
       { value: "refresh", label: "새로고침", description: "서버에서 최신 상태를 다시 받아옵니다." },
       { value: "signout", label: "로그아웃", danger: true }
     ]
@@ -1856,6 +1857,11 @@ async function openAccountSheet() {
 
   if (choice === "sort") {
     await pickSortMode();
+    return;
+  }
+
+  if (choice === "theme") {
+    await pickTheme();
     return;
   }
 
@@ -1885,6 +1891,36 @@ function sortLabel(mode) {
     return "이름";
   }
   return "내 순서";
+}
+
+async function pickTheme() {
+  const current = themePreference();
+  const choice = await openChoice({
+    title: "화면 모드",
+    description: "시스템 설정을 따르거나 직접 고정할 수 있습니다.",
+    options: [
+      {
+        value: "system",
+        label: current === "system" ? "시스템 설정 따르기 · 사용 중" : "시스템 설정 따르기",
+        description: "기기 설정이 바뀌면 함께 바뀝니다."
+      },
+      {
+        value: "light",
+        label: current === "light" ? "라이트 · 사용 중" : "라이트",
+        description: "밝은 화면으로 고정합니다."
+      },
+      {
+        value: "dark",
+        label: current === "dark" ? "다크 · 사용 중" : "다크",
+        description: "어두운 화면으로 고정합니다."
+      }
+    ]
+  });
+  if (!choice) {
+    return;
+  }
+  await setThemePreference(choice);
+  showToast(`화면 모드를 ${themeLabel()}(으)로 바꿨습니다.`, "success");
 }
 
 async function pickSortMode() {
