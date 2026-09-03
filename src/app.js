@@ -702,6 +702,9 @@ function createBoxView(box) {
       dataset: { boxId: box.id, active: "false" },
       onclick: () => handleBoxClick(box.id, "card"),
       onkeydown: (event) => {
+        if (event.target !== event.currentTarget) {
+          return;
+        }
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
           handleBoxClick(box.id, "card");
@@ -716,6 +719,7 @@ function createBoxView(box) {
   );
   root.setAttribute("role", "group");
   root.setAttribute("tabindex", "0");
+  root.setAttribute("aria-keyshortcuts", "Enter");
 
   return {
     root,
@@ -1516,6 +1520,7 @@ async function openSpaceSettings() {
     return;
   }
   const isOwner = space.role === "owner";
+  const canInvite = isOwner || space.role === "admin";
 
   await openSheet({
     title: space.name,
@@ -1563,8 +1568,23 @@ async function openSpaceSettings() {
                 }),
                 el("span", {
                   class: "members__role",
-                  text: member.role === "owner" ? "만든 사람" : "멤버"
+                  text: roleLabel(member.role)
                 }),
+                isOwner && member.role !== "owner"
+                  ? el("button", {
+                      class: "btn btn--tiny",
+                      type: "button",
+                      text: member.role === "admin" ? "관리자 해제" : "관리자로",
+                      title:
+                        member.role === "admin"
+                          ? "관리 권한을 거둡니다"
+                          : "팀원을 초대하고 관리할 수 있게 합니다",
+                      onclick: async () => {
+                        close(null);
+                        await changeMemberRole(space, member);
+                      }
+                    })
+                  : null,
                 isOwner && member.role !== "owner"
                   ? el("button", {
                       class: "btn btn--tiny btn--danger",
@@ -1584,6 +1604,20 @@ async function openSpaceSettings() {
 
       const actions = el("div", { class: "sheet__actions" });
 
+      if (canInvite) {
+        actions.append(
+          el("button", {
+            class: "btn btn--block",
+            type: "button",
+            text: "팀원 초대",
+            onclick: async () => {
+              close(null);
+              await openInvitePanel(space);
+            }
+          })
+        );
+      }
+
       if (isOwner) {
         actions.append(
           el("button", {
@@ -1602,15 +1636,6 @@ async function openSpaceSettings() {
             onclick: async () => {
               close(null);
               await changeSpaceCode(space);
-            }
-          }),
-          el("button", {
-            class: "btn btn--block",
-            type: "button",
-            text: "팀원 초대",
-            onclick: async () => {
-              close(null);
-              await openInvitePanel(space);
             }
           })
         );
@@ -2175,6 +2200,16 @@ function webOrigin() {
   return configured;
 }
 
+function roleLabel(role) {
+  if (role === "owner") {
+    return "만든 사람";
+  }
+  if (role === "admin") {
+    return "관리자";
+  }
+  return "멤버";
+}
+
 async function changeMemberRole(space, member) {
   const next = member.role === "admin" ? "member" : "admin";
   const confirmed = await openConfirm({
@@ -2191,7 +2226,8 @@ async function changeMemberRole(space, member) {
   try {
     await api.setMemberRole(space.id, member.user_id, next);
     state.members = (await api.fetchMembers(space.id)) ?? [];
-    showToast("권한을 바꿨습니다.", "success");
+    showToast(`${roleLabel(next)}(으)로 바꿨습니다.`, "success");
+    await openSpaceSettings();
   } catch (error) {
     reportError(error);
   }

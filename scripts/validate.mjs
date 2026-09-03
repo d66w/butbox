@@ -228,6 +228,24 @@ for (const match of appSource.matchAll(/qs\("#([^"]+)"\)\s*\./g)) {
   }
 }
 
+const REMOVED_PERMISSIONS = ["scripting", "webNavigation", "optional_host_permissions"];
+for (const doc of ["PRIVACY.md", "privacy.html"]) {
+  const text = read(doc);
+  for (const permission of manifest.permissions ?? []) {
+    if (!text.includes(permission)) {
+      fail(`${doc}에 ${permission} 권한 설명이 없습니다. 웹스토어 심사에서 권한마다 사유를 요구합니다.`);
+    }
+  }
+  for (const stale of REMOVED_PERMISSIONS) {
+    if (manifest.permissions?.includes(stale) || manifest[stale]) {
+      continue;
+    }
+    if (text.includes(stale)) {
+      fail(`${doc}이 더 이상 쓰지 않는 ${stale} 권한을 설명합니다. 실제보다 넓게 적으면 심사에서 문제가 됩니다.`);
+    }
+  }
+}
+
 const tokenSource = read("tokens.css");
 const definedTokens = new Set([...tokenSource.matchAll(/^\s*(--[a-z0-9-]+)\s*:/gm)].map((m) => m[1]));
 

@@ -5,7 +5,6 @@ import { readLocal, removeLocal, writeLocal } from "./store.js";
 
 let cachedSession = null;
 let refreshPromise = null;
-const listeners = new Set();
 
 export function isConfigured() {
   const url = String(CONFIG.supabaseUrl ?? "");
@@ -27,21 +26,6 @@ export function redirectUrl() {
     return chrome.identity.getRedirectURL("supabase-auth");
   }
   return `${window.location.origin}/auth/callback.html`;
-}
-
-export function onSessionChange(listener) {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
-}
-
-function emit(session) {
-  for (const listener of listeners) {
-    try {
-      listener(session);
-    } catch (error) {
-      console.error("세션 리스너 오류", error);
-    }
-  }
 }
 
 function base64Url(bytes) {
@@ -82,7 +66,6 @@ async function persist(session) {
   } else {
     await removeLocal(STORAGE_KEYS.session);
   }
-  emit(session);
 }
 
 export async function loadSession() {

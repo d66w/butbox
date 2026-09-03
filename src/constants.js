@@ -12,8 +12,6 @@ export const RECONNECT_BASE_MS = 1000;
 export const RECONNECT_MAX_MS = 20000;
 export const TOKEN_REFRESH_MARGIN_S = 90;
 
-export const FILE_RETENTION_DAYS = 7;
-
 export const STORAGE_KEYS = {
   session: "butbox.session",
   pkceVerifier: "butbox.pkce",

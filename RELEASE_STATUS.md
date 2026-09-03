@@ -1,6 +1,6 @@
 # 출시 체크리스트 — 현재 상태 점검 결과
 
-점검일: 2026-08-26 · 대상: `BUTBOX_RELEASE_CHECKLIST.md`
+점검일: 2026-08-27 · 대상: `BUTBOX_RELEASE_CHECKLIST.md`
 점검 방법: 코드 정적 분석 + `npm run check` + `npm test` + 실제 브라우저에서 웹 화면 구동
 
 ---
@@ -10,20 +10,20 @@
 | 구분 | 개수 | 설명 |
 | --- | --- | --- |
 | ✅ 코드로 확인 완료 | 34 | 아래 A |
-| 🐛 이번에 찾아 고친 버그 | 5 | 아래 B |
+| 🐛 찾아 고친 버그 | 7 | 아래 B |
 | 👤 사람만 가능 | 대다수 | 아래 D |
 
 **핵심**: 체크리스트의 실제 기능 테스트(2~8장)는 여전히 **사람이 실제 Chrome에서 두 개의 Google 계정으로** 해야 합니다. 목(mock) 검증은 실제 환경 검증을 대체하지 못합니다.
 
-**이번 점검에서 웹 앱이 아예 부팅되지 않는 버그를 찾았습니다.** 아래 B-1을 먼저 읽으세요.
+지금까지 찾아 고친 버그 7건은 아래 B에 있습니다. 출시 판정은 그 위에 있습니다.
 
 ---
 
 ## A. 지금 확인 완료
 
 ### §10 정적 검사 — 전부 통과
-- [x] `npm run check` 통과 (파일 61개)
-- [x] `npm test` 통과 (**95개** 전부)
+- [x] `npm run check` 통과 (파일 63개)
+- [x] `npm test` 통과 (**105개** 전부)
 - [x] manifest 참조 파일 정상
 - [x] JS import 경로 정상
 - [x] 전체 JS 문법 정상
@@ -43,6 +43,9 @@
 - [x] 어떤 JS도 `innerHTML`/`insertAdjacentHTML`/`document.write`를 쓰지 않음
 - [x] `boxes`/`spaces`에 테이블 단위 쓰기·읽기 권한이 다시 열리면 실패
 - [x] `grant all ... to anon/authenticated/public`이 생기면 실패
+- [x] 색 토큰은 `tokens.css`에서만 정의 — 확장·웹이 갈라지면 실패
+- [x] manifest 권한과 개인정보처리방침 설명이 어긋나면 실패
+- [x] `npm test` 글롭에 `**`가 다시 들어오면 실패
 
 ### §1-2 Extension ID
 - [x] Extension ID 고정 — `manifest.json`의 `key`
@@ -66,6 +69,27 @@
 - [x] clipboard 사용자 제스처 규칙
 - [x] realtime 이벤트 파싱 · 재연결 backoff
 - [x] 오류 메시지 (신규 4개 포함)
+- [x] **테마 시스템 (신규 `tests/theme.test.js` 12개)** — 첫 페인트 전 적용, 사용자 선택이 시스템보다 우선, 시스템 모드 양방향 추적, 잘못된 저장값 폴백, 토글 aria
+
+---
+
+## 판정: 아직 출시할 수 없습니다
+
+코드 쪽은 상당히 정리됐지만, **출시를 막는 것은 대부분 코드가 아닙니다.**
+
+| 남은 차단 요소 | 누가 |
+| --- | --- |
+| `004-column-grants.sql`을 운영 DB에 적용 | 사람 |
+| RLS 침투 테스트 실행 | 사람 |
+| Supabase Redirect URL 등록 (안 하면 로그인 자체가 안 됨) | 사람 |
+| 도메인 결정 + 호스팅 배포 → `webOrigin` 채우기 | 사람 |
+| `[운영자]` `[이메일]` `[사업자 정보]` 입력 | 사람 |
+| Google 계정 2개로 팀·실시간 실사용 테스트 | 사람 |
+| 브리핑 §9 검증 게이트 (2주 실사용) | 사람 |
+
+특히 마지막 항목은 브리핑이 스스로 정한 규칙입니다. 실사용자가 3일 이상 자발적으로 쓰는 것을 확인하기 전에는 기능을 더 만들지 않습니다. 그래서 이번 작업도 **새 기능을 넣지 않고**, 이미 있던 미완성·결함만 마무리했습니다.
+
+지금 상태를 한 줄로: **코드는 베타를 받을 준비가 됐고, 환경 설정이 안 돼서 아직 아무도 로그인할 수 없습니다.**
 
 ---
 
@@ -89,7 +113,17 @@
 
 즉 **직전 커밋을 포함해 CI는 계속 빨간불이었고, 테스트는 한 번도 검증에 쓰이지 않았습니다.** `tests/*.test.js`로 바꿔 Windows·Linux 양쪽에서 95개가 도는 것을 확인했습니다. `npm run check`에 `**` 사용 금지 검사와 테스트 파일 개수 하한을 넣었습니다.
 
-### 🟡 B-5. `el()`의 `innerHTML` 경로
+### 🟠 B-5. 카드 안의 버튼이 키보드로 아예 눌리지 않았음
+카드(`article`)에 `tabindex`와 Enter/Space 핸들러가 있는데, 그 핸들러가 **어디서 온 키 입력인지 보지 않고** `preventDefault()`를 불렀습니다. 별(즐겨찾기)과 "수정" 버튼은 `click`만 `stopPropagation`하고 `keydown`은 막지 않았기 때문에, 버튼에 포커스를 두고 Enter나 Space를 누르면 버튼 동작이 취소되고 **대신 카드가 복사됐습니다.**
+
+즉 마우스 없이는 즐겨찾기와 편집을 쓸 수 없었습니다. 카드 핸들러가 `event.target === event.currentTarget`일 때만 반응하도록 고쳤고, 고치기 전과 후를 브라우저에서 재현해 확인했습니다.
+
+### 🟡 B-6. 권한 문서가 실제 manifest와 양쪽으로 어긋나 있었음
+삽입 기능이 삭제될 때 `scripting`과 모든 사이트 접근 권한이 manifest에서 빠졌는데, `PRIVACY.md`와 `privacy.html`은 여전히 그 권한들을 설명하고 있었습니다. **실제보다 넓은 권한을 요구한다고 적어둔 셈**이라 심사에서 불리합니다. 반대로 새로 추가된 `clipboardRead`는 어디에도 없었습니다 — 이쪽은 반려 사유입니다.
+
+둘 다 고치고, manifest의 권한 목록과 문서가 어긋나면 `npm run check`가 실패하게 했습니다.
+
+### 🟡 B-7. `el()`의 `innerHTML` 경로
 `src/ui.js`의 DOM 헬퍼에 쓰이지 않는 `html:` 옵션이 있어 HTML 문자열을 그대로 주입할 수 있었습니다. 제거하고, `innerHTML`/`outerHTML`/`srcdoc`을 프로퍼티로도 못 넣게 막았습니다.
 
 ---
@@ -168,6 +202,23 @@ https://polkcadchekgljdfhadoabgcojpjpkgj.chromiumapp.org/supabase-auth
 
 ---
 
+## E-0. 이번에 마무리한 미완성 기능
+
+### admin 역할이 도달 불가능했던 문제
+`changeMemberRole()`이 정의만 되고 어디서도 호출되지 않아, DB가 owner/admin/member를 전부 지원하는데도 **실제로 admin이 될 방법이 없었습니다.** 체크리스트 §5-2의 admin 권한 테스트는 수행 자체가 불가능했습니다.
+
+스페이스 설정의 멤버 목록에 "관리자로 / 관리자 해제" 버튼을 붙이고, 역할 표시를 실제 역할(만든 사람/관리자/멤버)로 바꿨습니다. admin에게는 "팀원 초대"를 열어 줬습니다 — DB의 `create_invite`가 이미 admin을 허용하는데 UI만 owner로 막고 있었습니다.
+
+새 기능이 아니라 **이미 있던 것을 연결한 것**입니다. 서버 권한 규칙은 손대지 않았습니다.
+
+### 쓰이지 않던 코드 제거
+`api.describeSpace`, `auth.onSessionChange`, `constants.FILE_RETENTION_DAYS`를 지웠습니다. `onSessionChange`가 사라지면서 `listeners`/`emit()`도 아무도 구독하지 않는 빈 기계장치가 되어 함께 정리했습니다. `FILE_RETENTION_DAYS`는 §9 게이트로 만들지 않기로 한 파일 업로드 잔재라 오해를 부를 수 있었습니다.
+
+### 웹스토어 제출 자료
+[`STORE.md`](STORE.md) — 요약/자세한 설명 문안, **권한별 사유**(심사에서 항목마다 요구함), 데이터 사용 공개 항목, 스크린샷 촬영 순서, 제출 순서(스토어 키 교체 → Redirect URL 재등록 → 심사), 반려 가능 지점과 대비. `[도메인]` `[이메일]`만 채우면 그대로 붙여 넣을 수 있습니다.
+
+---
+
 ## E. 고치지 않고 남겨둔 것 (판단이 필요해서)
 
 ### E-1. 로그아웃 상태에서 초대 미리보기가 동작하지 않음
@@ -175,13 +226,5 @@ https://polkcadchekgljdfhadoabgcojpjpkgj.chromiumapp.org/supabase-auth
 
 고치려면 `peek_invite`를 `anon`에게도 열어야 합니다. 토큰이 36자 hex라 추측은 불가능하고 노출되는 정보는 스페이스 이름과 인원수뿐이지만, **인증 없는 RPC를 여는 보안 결정**이라 임의로 하지 않았습니다. 지금도 크래시 없이 동작은 합니다.
 
-### E-2. admin 역할을 UI에서 부여할 방법이 없음
-`src/app.js`의 `changeMemberRole()`이 정의만 되고 **어디서도 호출되지 않습니다.** 초대 링크도 `"member"`로 고정돼 있습니다. DB는 owner/admin/member를 모두 지원하지만 실제로 admin이 되는 경로가 없어, 체크리스트 §5-2의 admin 권한 테스트는 지금 상태로는 수행 자체가 불가능합니다.
-
-기능을 붙일지, admin을 v1에서 빼고 문서를 맞출지는 제품 결정이라 남겨 뒀습니다.
-
-### E-3. 쓰이지 않는 코드
-`api.describeSpace`, `auth.onSessionChange`, `constants.FILE_RETENTION_DAYS`가 어디서도 호출되지 않습니다. `FILE_RETENTION_DAYS`는 브리핑 §9 게이트로 만들지 않기로 한 파일 업로드 잔재라 특히 오해를 부를 수 있습니다.
-
-### E-4. `invitations` 읽기는 owner만
+### E-2. `invitations` 읽기는 owner만
 `create_invite`/`revoke_invites`는 admin도 허용하는데 `invitations_read_admin` 정책은 owner만 허용합니다. 더 좁은 쪽이라 보안 구멍은 아니지만 일관되지 않습니다.

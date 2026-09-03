@@ -216,7 +216,3 @@ export function redeemInvite(token) {
 export function revokeInvites(spaceId) {
   return rpc("revoke_invites", { p_space_id: spaceId });
 }
-
-export function describeSpace(spaceId, description) {
-  return rpc("describe_space", { p_space_id: spaceId, p_description: description });
-}

@@ -1,6 +1,6 @@
 # 붙박스 인수인계 문서
 
-작성일: 2026-08-26 (갱신) · 이 문서를 읽는 사람(또는 AI)이 바로 이어서 작업할 수 있도록 정리했습니다.
+작성일: 2026-08-27 (갱신) · 이 문서를 읽는 사람(또는 AI)이 바로 이어서 작업할 수 있도록 정리했습니다.
 
 ---
 
@@ -46,7 +46,7 @@ C:\Users\HEESEOP\OneDrive\문서\카카오톡 받은 파일\AI-인수인계-프�
 - 템플릿 변수 `{{고객명}}` — 복사할 때 값을 물어봄. `{{오늘}}`은 자동. 같은 변수 반복·잘못된 형식 모두 안전 처리
 - 우클릭 "붙박스에 저장", `Ctrl+Shift+K` 단축키
 - 태그, 개인별 즐겨찾기, 최근 사용 정렬
-- 초대 링크, 역할(owner/admin/member)
+- 초대 링크, 역할(owner/admin/member) — owner가 멤버를 관리자로 올리면 그 사람도 초대할 수 있습니다
 - RLS 10개 테이블 전부 적용, anon 권한 회수 14건, service_role 클라이언트 노출 0건
 
 ### 안 만든 것 (의도적)
@@ -138,7 +138,7 @@ https://polkcadchekgljdfhadoabgcojpjpkgj.chromiumapp.org/supabase-auth
 ## 6. Git 상태
 
 로컬 `main`과 `origin/main`이 **동기화돼 있습니다.** 작업 트리도 깨끗합니다.
-`npm run check`, `npm test`(93개) 전부 통과 확인됨.
+`npm run check`, `npm test`(105개) 전부 통과 확인됨.
 
 `workflow` 스코프가 없는 토큰으로는 `.github/workflows/` 변경을 푸시할 수 없습니다. 거부당하면:
 
@@ -191,6 +191,8 @@ gh auth refresh -h github.com -s workflow
 | 10KB 초과 안내가 "10KB / 지금 10KB"로 동어반복 | 반올림 때문에 한도와 현재값이 같은 문자열이 됨 | `src/format.js` `validateBoxText` — 초과량을 알려주도록 수정됨 |
 | **웹 앱이 통째로 죽어 있었음** | `boot()`이 사이드 패널에만 있는 `#signin-redirect-url`을 확인 없이 건드림 → TypeError로 핸들러 배선 전체가 중단 | `src/app.js` `boot` — 이제 `npm run check`가 두 HTML의 id 집합을 대조 |
 | 오류 토스트에 `WRONG_PASSWORD` 같은 영문 코드가 그대로 뜸 | `errorMessage()`가 `AppError`면 매핑을 건너뛰고 원문을 반환. `api.js`는 서버 원문을 `AppError`에 담아 던짐 | `src/errors.js` — 모든 경로가 `translate()`를 거치도록 수정 |
+| **카드 안 버튼이 키보드로 안 눌림** | 카드의 Enter/Space 핸들러가 이벤트 출처를 안 보고 `preventDefault()` → 별·수정 버튼의 기본 동작이 취소되고 카드 복사가 실행 | `src/app.js` `createBoxView` — `event.target === event.currentTarget` 검사 추가 |
+| 권한 문서가 manifest와 어긋남 | 삽입 기능 삭제 시 `scripting`이 빠졌는데 문서엔 남고, 새로 생긴 `clipboardRead`는 문서에 없었음 | `PRIVACY.md`·`privacy.html` — `npm run check`가 manifest와 대조 |
 | **CI가 테스트를 한 번도 안 돌림** | `node --test tests/**/*.test.js` — Linux 셸은 `globstar`가 꺼져 있어 `**`가 `*`처럼 동작, 매칭 0건 | `package.json` — `tests/*.test.js`로 수정. `npm run check`가 `**` 재등장을 막음 |
 
 SQL은 배포 전 **실제 Postgres 파서로 검증**하세요. libpg_query 바인딩(`pip install pglast`)으로 top-level과 plpgsql 본문을 둘 다 검사할 수 있습니다.
@@ -237,6 +239,8 @@ for path in glob.glob("supabase/**/*.sql", recursive=True):
 
 ## 10. 다음에 할 일 (우선순위 순)
 
+> 코드 쪽 미완성은 이번에 정리했습니다. **남은 출시 차단 요소는 거의 전부 사람 손이 필요한 환경 설정입니다.** 특히 2번을 안 하면 아무도 로그인할 수 없습니다.
+
 1. **`supabase/migrations/004-column-grants.sql` 실행** — 지금 운영 DB에 보안 구멍 3건이 열려 있습니다. 비밀번호 해시 노출, 태그로 플랜 한도 우회, 남의 플랜 조회. 자세한 내용은 `RELEASE_STATUS.md` C-2~C-4
 2. **Supabase Redirect URL 등록** (§5 주소) — 안 하면 로그인이 안 됨
 3. **양쪽 PC에서 확장 재로드 후 로그인 확인**
@@ -263,6 +267,7 @@ for path in glob.glob("supabase/**/*.sql", recursive=True):
 | `README.md` | 설치·설정 가이드 |
 | `ROADMAP.md` | 기능 로드맵, 브리핑 §8·§12 대조 |
 | `BUTBOX_RELEASE_CHECKLIST.md` | 출시 체크리스트 |
+| `STORE.md` | 웹스토어 제출 자료 — 설명 문안, 권한별 사유, 스크린샷·제출 순서 |
 | `RELEASE_STATUS.md` | 체크리스트 항목별 검증 결과 + **찾아 고친 버그 · 남겨둔 판단 사항** |
 | `PRIVACY.md` | 개인정보처리방침 원본 (placeholder 포함) |
 | `HANDOFF.md` | 이 문서 |
